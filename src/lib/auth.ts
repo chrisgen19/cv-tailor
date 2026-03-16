@@ -9,9 +9,11 @@ export const auth = betterAuth({
 	emailAndPassword: {
 		enabled: true,
 	},
-	accountLinking: {
-		enabled: true,
-		trustedProviders: ["google"],
+	account: {
+		accountLinking: {
+			enabled: true,
+			trustedProviders: ["google"],
+		},
 	},
 	socialProviders: {
 		google: {
