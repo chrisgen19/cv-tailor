@@ -1,29 +1,79 @@
-import { Upload } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
+"use client";
+
+import { formatDistanceToNow } from "date-fns";
+import { FileText, Loader2 } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { CVSectionDisplay } from "@/components/cv/cv-section-display";
+import { CVUploadZone } from "@/components/cv/cv-upload-zone";
+import type { ParsedCV } from "@/lib/gemini";
+
+interface MasterCVData {
+	id: string;
+	fileName: string;
+	fileUrl: string;
+	parsedSections: ParsedCV;
+	createdAt: string;
+	updatedAt: string;
+}
 
 export default function CVPage() {
+	const [cv, setCv] = useState<MasterCVData | null>(null);
+	const [loading, setLoading] = useState(true);
+
+	const fetchCV = useCallback(async () => {
+		try {
+			const res = await fetch("/api/cv");
+			if (!res.ok) return;
+			const data = await res.json();
+			setCv(data);
+		} finally {
+			setLoading(false);
+		}
+	}, []);
+
+	useEffect(() => {
+		fetchCV();
+	}, [fetchCV]);
+
+	const handleUploadComplete = () => {
+		fetchCV();
+	};
+
+	if (loading) {
+		return (
+			<div className="space-y-6">
+				<div>
+					<h1 className="text-2xl font-semibold">My CV</h1>
+					<p className="text-muted-foreground">Manage your master CV</p>
+				</div>
+				<div className="flex items-center justify-center py-12">
+					<Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+				</div>
+			</div>
+		);
+	}
+
 	return (
 		<div className="space-y-6">
-			<div>
-				<h1 className="text-2xl font-semibold">My CV</h1>
-				<p className="text-muted-foreground">Manage your master CV</p>
+			<div className="flex items-start justify-between">
+				<div>
+					<h1 className="text-2xl font-semibold">My CV</h1>
+					<p className="text-muted-foreground">Manage your master CV</p>
+				</div>
+				{cv && (
+					<div className="text-right text-xs text-muted-foreground">
+						<div className="flex items-center gap-1.5">
+							<FileText className="h-3.5 w-3.5" />
+							{cv.fileName}
+						</div>
+						<p>Updated {formatDistanceToNow(new Date(cv.updatedAt), { addSuffix: true })}</p>
+					</div>
+				)}
 			</div>
 
-			<Card>
-				<CardContent className="flex flex-col items-center justify-center py-12 text-center">
-					<div className="mb-4 rounded-full bg-primary/10 p-4">
-						<Upload className="h-8 w-8 text-primary" />
-					</div>
-					<h3 className="mb-1 text-lg font-medium">Upload your CV</h3>
-					<p className="mb-4 max-w-sm text-sm text-muted-foreground">
-						Upload a PDF or DOCX file. We&apos;ll parse it into structured sections using AI so it
-						can be tailored for each job application.
-					</p>
-					<p className="text-xs text-muted-foreground/60">
-						PDF or DOCX, max 10MB. Coming in Phase 2.
-					</p>
-				</CardContent>
-			</Card>
+			<CVUploadZone onUploadComplete={handleUploadComplete} hasExistingCV={!!cv} />
+
+			{cv?.parsedSections && <CVSectionDisplay parsedSections={cv.parsedSections} />}
 		</div>
 	);
 }
