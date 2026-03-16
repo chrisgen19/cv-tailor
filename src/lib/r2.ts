@@ -49,3 +49,10 @@ export async function deleteFileFromR2(key: string) {
 export function getR2PublicUrl(key: string) {
 	return `${process.env.CLOUDFLARE_R2_ENDPOINT}/${BUCKET}/${key}`;
 }
+
+export function extractR2KeyFromUrl(url: string | null | undefined): string | null {
+	if (!url) return null;
+	const prefix = `${process.env.CLOUDFLARE_R2_ENDPOINT}/${BUCKET}/`;
+	if (!url.startsWith(prefix)) return null;
+	return url.slice(prefix.length);
+}

@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth";
 import { extractText } from "@/lib/cv-parser";
 import { parseCV } from "@/lib/gemini";
 import { prisma } from "@/lib/prisma";
-import { deleteFileFromR2, getFileFromR2, getR2PublicUrl } from "@/lib/r2";
+import { deleteFileFromR2, extractR2KeyFromUrl, getFileFromR2, getR2PublicUrl } from "@/lib/r2";
 import { cvUploadSchema } from "@/lib/validations";
 
 export async function POST(request: Request) {
@@ -25,14 +25,11 @@ export async function POST(request: Request) {
 	const { r2Key, fileName, contentType } = parsed.data;
 
 	try {
-		// 1. Delete old R2 file if replacing
+		// 1. Get existing CV info before replacing
 		const existingCV = await prisma.masterCV.findUnique({
 			where: { userId: session.user.id },
-			select: { r2Key: true },
+			select: { r2Key: true, originalFileUrl: true },
 		});
-		if (existingCV?.r2Key) {
-			await deleteFileFromR2(existingCV.r2Key);
-		}
 
 		// 2. Fetch new file from R2
 		const buffer = await getFileFromR2(r2Key);
@@ -57,6 +54,12 @@ export async function POST(request: Request) {
 			create: { userId: session.user.id, ...cvData },
 			update: cvData,
 		});
+
+		// 6. Delete old R2 file only after upsert succeeds
+		const oldR2Key = existingCV?.r2Key ?? extractR2KeyFromUrl(existingCV?.originalFileUrl);
+		if (oldR2Key && oldR2Key !== r2Key) {
+			await deleteFileFromR2(oldR2Key);
+		}
 
 		return NextResponse.json({
 			id: masterCV.id,
