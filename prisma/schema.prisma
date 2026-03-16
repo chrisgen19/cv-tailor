@@ -72,6 +72,7 @@ model MasterCV {
   rawText          String   @db.Text
   originalFileName String
   originalFileUrl  String
+  r2Key            String?
   parsedSections   Json?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt

@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth";
 import { extractText } from "@/lib/cv-parser";
 import { parseCV } from "@/lib/gemini";
 import { prisma } from "@/lib/prisma";
-import { getFileFromR2, getR2PublicUrl } from "@/lib/r2";
+import { deleteFileFromR2, getFileFromR2, getR2PublicUrl } from "@/lib/r2";
 import { cvUploadSchema } from "@/lib/validations";
 
 export async function POST(request: Request) {
@@ -25,20 +25,30 @@ export async function POST(request: Request) {
 	const { r2Key, fileName, contentType } = parsed.data;
 
 	try {
-		// 1. Fetch file from R2
+		// 1. Delete old R2 file if replacing
+		const existingCV = await prisma.masterCV.findUnique({
+			where: { userId: session.user.id },
+			select: { r2Key: true },
+		});
+		if (existingCV?.r2Key) {
+			await deleteFileFromR2(existingCV.r2Key);
+		}
+
+		// 2. Fetch new file from R2
 		const buffer = await getFileFromR2(r2Key);
 
-		// 2. Extract raw text
+		// 3. Extract raw text
 		const rawText = await extractText(buffer, contentType);
 
-		// 3. Parse CV with Gemini AI
+		// 4. Parse CV with Gemini AI
 		const parsedSections = await parseCV(rawText);
 
-		// 4. Upsert MasterCV (one-to-one: replace if exists)
+		// 5. Upsert MasterCV (one-to-one: replace if exists)
 		const cvData = {
 			rawText,
 			originalFileName: fileName,
 			originalFileUrl: getR2PublicUrl(r2Key),
+			r2Key,
 			parsedSections: JSON.parse(JSON.stringify(parsedSections)),
 		};
 
