@@ -8,6 +8,7 @@ import {
 	Calendar,
 	Check,
 	Clipboard,
+	Download,
 	ExternalLink,
 	FileText,
 	Loader2,
@@ -201,6 +202,18 @@ export default function ApplicationDetailPage() {
 		tmp.innerHTML = html;
 		await navigator.clipboard.writeText(tmp.textContent || "");
 		toast.success("Copied to clipboard");
+	};
+
+	// ─── Download Export ─────────────────────────────────────────────
+
+	const downloadExport = (type: "cv" | "cover-letter") => {
+		const url = `/api/applications/${id}/export?type=${type}&format=docx`;
+		const link = document.createElement("a");
+		link.href = url;
+		link.download = "";
+		document.body.appendChild(link);
+		link.click();
+		document.body.removeChild(link);
 	};
 
 	if (loading) {
@@ -534,6 +547,14 @@ export default function ApplicationDetailPage() {
 									<Button
 										variant="outline"
 										size="sm"
+										onClick={() => downloadExport("cv")}
+									>
+										<Download className="mr-1.5 h-3.5 w-3.5" />
+										DOCX
+									</Button>
+									<Button
+										variant="outline"
+										size="sm"
 										onClick={() => {
 											if (application.tailoredCVEdited !== application.tailoredCV) {
 												setConfirmRegenerate("tailor");
@@ -597,6 +618,14 @@ export default function ApplicationDetailPage() {
 									>
 										<Clipboard className="mr-1.5 h-3.5 w-3.5" />
 										Copy
+									</Button>
+									<Button
+										variant="outline"
+										size="sm"
+										onClick={() => downloadExport("cover-letter")}
+									>
+										<Download className="mr-1.5 h-3.5 w-3.5" />
+										DOCX
 									</Button>
 									<Button
 										variant="outline"

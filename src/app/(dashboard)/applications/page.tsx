@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { motion } from "framer-motion";
 import { Briefcase, Loader2, Plus } from "lucide-react";
 import Link from "next/link";
 import type { JobApplication } from "@/generated/prisma/client";
@@ -216,17 +217,32 @@ export default function ApplicationsPage() {
 					</CardContent>
 				</Card>
 			) : (
-				<div className="space-y-3">
+				<motion.div
+					className="space-y-3"
+					initial="hidden"
+					animate="show"
+					variants={{
+						hidden: { opacity: 0 },
+						show: { opacity: 1, transition: { staggerChildren: 0.05 } },
+					}}
+				>
 					{applications.map((app) => (
-						<ApplicationCard
+						<motion.div
 							key={app.id}
-							application={app}
-							selected={selected.has(app.id)}
-							onSelect={handleSelect}
-							onDelete={setDeleteId}
-						/>
+							variants={{
+								hidden: { opacity: 0, y: 10 },
+								show: { opacity: 1, y: 0, transition: { duration: 0.25 } },
+							}}
+						>
+							<ApplicationCard
+								application={app}
+								selected={selected.has(app.id)}
+								onSelect={handleSelect}
+								onDelete={setDeleteId}
+							/>
+						</motion.div>
 					))}
-				</div>
+				</motion.div>
 			)}
 
 			{totalPages > 1 && (
