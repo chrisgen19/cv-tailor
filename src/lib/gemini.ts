@@ -88,3 +88,83 @@ ${rawText}`,
 		return JSON.parse(text) as ParsedCV;
 	});
 }
+
+// ─── Job Meta Extraction ──────────────────────────────────────────────
+
+export interface JobMeta {
+	title: string;
+	company: string;
+}
+
+export async function extractJobMeta(description: string): Promise<JobMeta> {
+	return withRetry(async () => {
+		const response = await ai.models.generateContent({
+			model: MODEL,
+			contents: [
+				{
+					role: "user",
+					parts: [
+						{
+							text: `Extract the job title and company name from this job description. If not found, use empty string.
+
+Return JSON: { "title": "...", "company": "..." }
+
+JOB DESCRIPTION:
+${description.slice(0, 3000)}`,
+						},
+					],
+				},
+			],
+			config: { responseMimeType: "application/json" },
+		});
+
+		const text = response.text;
+		if (!text) throw new Error("Empty response from Gemini");
+		return JSON.parse(text) as JobMeta;
+	});
+}
+
+// ─── Job Requirements Parsing ─────────────────────────────────────────
+
+export interface ParsedRequirements {
+	requiredSkills: string[];
+	preferredSkills: string[];
+	responsibilities: string[];
+	qualifications: string[];
+	experienceLevel: string;
+	employmentType: string;
+}
+
+export async function parseJobRequirements(description: string): Promise<ParsedRequirements> {
+	return withRetry(async () => {
+		const response = await ai.models.generateContent({
+			model: MODEL,
+			contents: [
+				{
+					role: "user",
+					parts: [
+						{
+							text: `You are an expert job description analyzer. Parse this job description into structured requirements.
+
+Return a JSON object with:
+- requiredSkills: string[] (must-have skills explicitly stated)
+- preferredSkills: string[] (nice-to-have or preferred skills)
+- responsibilities: string[] (key job responsibilities)
+- qualifications: string[] (education, certifications, or other qualifications)
+- experienceLevel: string (e.g. "Entry", "Mid", "Senior", "Lead", or "Not specified")
+- employmentType: string (e.g. "Full-time", "Part-time", "Contract", or "Not specified")
+
+JOB DESCRIPTION:
+${description}`,
+						},
+					],
+				},
+			],
+			config: { responseMimeType: "application/json" },
+		});
+
+		const text = response.text;
+		if (!text) throw new Error("Empty response from Gemini");
+		return JSON.parse(text) as ParsedRequirements;
+	});
+}
