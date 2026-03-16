@@ -81,7 +81,7 @@ pnpm format       # Biome formatting
 | Job Scraping | @extractus/article-extractor | Scrape job descriptions from URLs |
 | File Storage | Cloudflare R2 via `@aws-sdk/client-s3` + `@aws-sdk/s3-request-presigner` | S3-compatible object storage for CV uploads |
 | File Upload UI | react-dropzone | Drag-and-drop file upload zone |
-| PDF Parsing | pdf-parse v2 | Extract text from uploaded PDF CVs |
+| PDF Parsing | unpdf | Extract text from uploaded PDF CVs (serverless-compatible) |
 | DOCX Parsing | mammoth | Extract text from uploaded DOCX CVs |
 | Validation | Zod | All form/API validation schemas |
 | Formatter/Linter | Biome v2.4 | Single tool for lint + format |
@@ -220,7 +220,7 @@ src/
 │   │           ├── tailor/route.ts
 │   │           ├── cover-letter/route.ts
 │   │           └── export/route.ts # DOCX download
-│   ├── layout.tsx                  # Root layout (Geist font, Toaster)
+│   ├── layout.tsx                  # Root layout (Inter font, Toaster)
 │   ├── page.tsx                    # Landing page
 │   └── globals.css                 # Dark theme + light mode
 ├── components/
@@ -244,7 +244,7 @@ src/
 ├── store/
 │   └── ui-store.ts                 # Zustand: sidebar state
 ├── generated/prisma/               # Prisma generated client
-└── middleware.ts                    # Route protection
+└── proxy.ts                        # Route protection (Next.js 16 proxy)
 ```
 
 ---
@@ -261,7 +261,7 @@ src/
 - [x] shadcn/ui v4 (Base UI) components
 - [x] PostgreSQL + Prisma 7 with PrismaPg adapter, initial migration
 - [x] Better Auth (email/password + Google OAuth)
-- [x] Middleware route protection
+- [x] Proxy route protection (Next.js 16)
 - [x] Auth pages (sign-in, sign-up) with email/password + Google OAuth
 - [x] Dashboard layout (sidebar + header + mobile bottom nav)
 - [x] Zustand UI store
@@ -276,7 +276,7 @@ src/
 
 - [x] Cloudflare R2 client with presigned URL helpers
 - [x] react-dropzone drag-and-drop upload
-- [x] pdf-parse v2 + mammoth text extraction
+- [x] unpdf + mammoth text extraction
 - [x] Presigned URL + upload confirmation API routes
 - [x] Gemini `parseCV()` → structured JSON sections
 - [x] CV management page with upload zone + parsed sections display
@@ -339,7 +339,7 @@ src/
 
 - Email/password sign-up
 - Google OAuth sign-in
-- Protected routes via middleware — redirect unauthenticated users to /sign-in
+- Protected routes via proxy — redirect unauthenticated users to /sign-in
 - Session management with Better Auth
 - Sign-out from header dropdown
 
@@ -347,7 +347,7 @@ src/
 
 **Upload Flow:**
 1. User uploads PDF or DOCX via drag-and-drop zone (react-dropzone → presigned URL → Cloudflare R2)
-2. Server extracts raw text (PDF → pdf-parse v2, DOCX → mammoth)
+2. Server extracts raw text (PDF → unpdf, DOCX → mammoth)
 3. Gemini parses text into structured JSON (contact, summary, experience[], education[], skills{}, certifications[])
 4. Store `rawText` and `parsedSections` in MasterCV
 5. Display parsed CV as section cards
@@ -446,7 +446,7 @@ CLOUDFLARE_R2_ENDPOINT="https://<account-id>.r2.cloudflarestorage.com"
 - Cards with subtle ring borders, rounded corners
 
 ### Typography
-- Font: **Geist** (via `next/font`)
+- Font: **Inter** (via `next/font`) with **JetBrains Mono** for monospace
 
 ### Layout
 - Fixed left sidebar (hidden on mobile)
