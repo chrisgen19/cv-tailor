@@ -35,6 +35,8 @@ export const updateApplicationSchema = z.object({
 		.enum(["DRAFT", "ANALYZED", "TAILORED", "APPLIED", "REJECTED", "INTERVIEW", "OFFER"])
 		.optional(),
 	notes: z.string().optional(),
+	tailoredCVEdited: z.string().optional(),
+	coverLetter: z.string().optional(),
 	appliedAt: z.string().datetime().optional().nullable(),
 });
 

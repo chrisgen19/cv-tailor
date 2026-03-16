@@ -1,15 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import {
 	ArrowLeft,
 	Building2,
 	Calendar,
+	Check,
+	Clipboard,
 	ExternalLink,
 	FileText,
 	Loader2,
 	Pencil,
+	RefreshCw,
 	Sparkles,
 	Target,
 	Trash2,
@@ -17,8 +20,12 @@ import {
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import type { JobApplication } from "@/generated/prisma/client";
-import type { ParsedRequirements } from "@/lib/gemini";
+import type { MatchAnalysis, ParsedRequirements } from "@/lib/gemini";
+import { cn } from "@/lib/utils";
+import { MatchScoreRing } from "@/components/applications/match-score-ring";
 import { StatusBadge } from "@/components/applications/status-badge";
+import { TiptapEditor } from "@/components/editor/tiptap-editor";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -40,6 +47,20 @@ export default function ApplicationDetailPage() {
 	const [deleteOpen, setDeleteOpen] = useState(false);
 	const [deleting, setDeleting] = useState(false);
 
+	// AI action states
+	const [analyzing, setAnalyzing] = useState(false);
+	const [tailoring, setTailoring] = useState(false);
+	const [generatingCL, setGeneratingCL] = useState(false);
+
+	// Auto-save states
+	const [savingCV, setSavingCV] = useState(false);
+	const [savedCV, setSavedCV] = useState(false);
+	const [savingCL, setSavingCL] = useState(false);
+	const [savedCL, setSavedCL] = useState(false);
+
+	// Regenerate confirmation
+	const [confirmRegenerate, setConfirmRegenerate] = useState<"tailor" | "cover-letter" | null>(null);
+
 	const fetchApplication = useCallback(async () => {
 		try {
 			const res = await fetch(`/api/applications/${id}`);
@@ -57,6 +78,108 @@ export default function ApplicationDetailPage() {
 		fetchApplication();
 	}, [fetchApplication]);
 
+	// ─── AI Actions ──────────────────────────────────────────────────
+
+	const handleAnalyze = async () => {
+		setAnalyzing(true);
+		try {
+			const res = await fetch(`/api/applications/${id}/analyze`, { method: "POST" });
+			if (!res.ok) {
+				const data = await res.json();
+				throw new Error(data.error || "Analysis failed");
+			}
+			setApplication(await res.json());
+			toast.success("Match analysis complete");
+		} catch (error) {
+			toast.error(error instanceof Error ? error.message : "Analysis failed");
+		} finally {
+			setAnalyzing(false);
+		}
+	};
+
+	const handleTailor = async () => {
+		setConfirmRegenerate(null);
+		setTailoring(true);
+		try {
+			const res = await fetch(`/api/applications/${id}/tailor`, { method: "POST" });
+			if (!res.ok) {
+				const data = await res.json();
+				throw new Error(data.error || "Tailoring failed");
+			}
+			setApplication(await res.json());
+			toast.success("Tailored CV generated");
+		} catch (error) {
+			toast.error(error instanceof Error ? error.message : "Tailoring failed");
+		} finally {
+			setTailoring(false);
+		}
+	};
+
+	const handleGenerateCoverLetter = async () => {
+		setConfirmRegenerate(null);
+		setGeneratingCL(true);
+		try {
+			const res = await fetch(`/api/applications/${id}/cover-letter`, { method: "POST" });
+			if (!res.ok) {
+				const data = await res.json();
+				throw new Error(data.error || "Generation failed");
+			}
+			setApplication(await res.json());
+			toast.success("Cover letter generated");
+		} catch (error) {
+			toast.error(error instanceof Error ? error.message : "Generation failed");
+		} finally {
+			setGeneratingCL(false);
+		}
+	};
+
+	// ─── Auto-save (debounced 2s) ────────────────────────────────────
+
+	const cvTimerRef = useRef<ReturnType<typeof setTimeout>>(null);
+	const clTimerRef = useRef<ReturnType<typeof setTimeout>>(null);
+
+	const saveEdited = useCallback(
+		async (field: "tailoredCVEdited" | "coverLetter", content: string) => {
+			const setSaving = field === "tailoredCVEdited" ? setSavingCV : setSavingCL;
+			const setSaved = field === "tailoredCVEdited" ? setSavedCV : setSavedCL;
+			setSaving(true);
+			setSaved(false);
+			try {
+				const res = await fetch(`/api/applications/${id}`, {
+					method: "PATCH",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ [field]: content }),
+				});
+				if (!res.ok) throw new Error();
+				setSaved(true);
+				setTimeout(() => setSaved(false), 2000);
+			} catch {
+				toast.error("Failed to save changes");
+			} finally {
+				setSaving(false);
+			}
+		},
+		[id],
+	);
+
+	const handleCVUpdate = useCallback(
+		(content: string) => {
+			if (cvTimerRef.current) clearTimeout(cvTimerRef.current);
+			cvTimerRef.current = setTimeout(() => saveEdited("tailoredCVEdited", content), 2000);
+		},
+		[saveEdited],
+	);
+
+	const handleCLUpdate = useCallback(
+		(content: string) => {
+			if (clTimerRef.current) clearTimeout(clTimerRef.current);
+			clTimerRef.current = setTimeout(() => saveEdited("coverLetter", content), 2000);
+		},
+		[saveEdited],
+	);
+
+	// ─── Delete ──────────────────────────────────────────────────────
+
 	const handleDelete = async () => {
 		setDeleting(true);
 		try {
@@ -71,6 +194,15 @@ export default function ApplicationDetailPage() {
 		}
 	};
 
+	// ─── Copy to Clipboard ───────────────────────────────────────────
+
+	const copyToClipboard = async (html: string) => {
+		const tmp = document.createElement("div");
+		tmp.innerHTML = html;
+		await navigator.clipboard.writeText(tmp.textContent || "");
+		toast.success("Copied to clipboard");
+	};
+
 	if (loading) {
 		return (
 			<div className="flex items-center justify-center py-20">
@@ -82,6 +214,7 @@ export default function ApplicationDetailPage() {
 	if (!application) return null;
 
 	const requirements = application.parsedRequirements as ParsedRequirements | null;
+	const matchAnalysis = application.matchAnalysis as MatchAnalysis | null;
 
 	return (
 		<div className="space-y-6">
@@ -110,7 +243,7 @@ export default function ApplicationDetailPage() {
 									href={application.sourceUrl}
 									target="_blank"
 									rel="noopener noreferrer"
-									className="flex items-center gap-1 hover:text-primary transition-colors"
+									className="flex items-center gap-1 transition-colors hover:text-primary"
 								>
 									<ExternalLink className="h-3.5 w-3.5" />
 									View posting
@@ -165,7 +298,7 @@ export default function ApplicationDetailPage() {
 					</TabsTrigger>
 				</TabsList>
 
-				{/* Job Description Tab */}
+				{/* ─── Job Description Tab ─────────────────────────────────── */}
 				<TabsContent value="description" className="mt-4 space-y-4">
 					<Card>
 						<CardHeader>
@@ -252,81 +385,255 @@ export default function ApplicationDetailPage() {
 									</CardContent>
 								</Card>
 							)}
-							{(requirements.experienceLevel !== "Not specified" ||
-								requirements.employmentType !== "Not specified") && (
-								<Card size="sm">
-									<CardHeader>
-										<CardTitle>Details</CardTitle>
-									</CardHeader>
-									<CardContent className="space-y-2 text-sm">
-										{requirements.experienceLevel !== "Not specified" && (
-											<div>
-												<span className="text-muted-foreground">Experience: </span>
-												<span>{requirements.experienceLevel}</span>
-											</div>
-										)}
-										{requirements.employmentType !== "Not specified" && (
-											<div>
-												<span className="text-muted-foreground">Type: </span>
-												<span>{requirements.employmentType}</span>
-											</div>
-										)}
-									</CardContent>
-								</Card>
-							)}
 						</div>
 					)}
 				</TabsContent>
 
-				{/* Match Analysis Tab — Phase 4 */}
+				{/* ─── Match Analysis Tab ──────────────────────────────────── */}
 				<TabsContent value="analysis" className="mt-4">
-					<Card>
-						<CardContent className="flex flex-col items-center justify-center py-12 text-center">
-							<Target className="mb-3 h-10 w-10 text-muted-foreground/40" />
-							<h3 className="mb-1 text-lg font-medium">Match Analysis</h3>
-							<p className="mb-4 max-w-sm text-sm text-muted-foreground">
-								AI-powered analysis comparing your CV with this job's requirements. Coming in Phase 4.
-							</p>
-							<Button disabled>
-								<Sparkles className="mr-2 h-4 w-4" />
-								Run Analysis
-							</Button>
-						</CardContent>
-					</Card>
+					{matchAnalysis ? (
+						<div className="space-y-4">
+							{/* Score + Summary */}
+							<Card>
+								<CardContent className="flex flex-col items-center gap-4 py-6 sm:flex-row sm:items-start sm:gap-8">
+									<MatchScoreRing score={matchAnalysis.matchScore} />
+									<div className="flex-1 text-center sm:text-left">
+										<h3 className="mb-2 text-lg font-medium">Match Summary</h3>
+										<p className="text-sm text-muted-foreground">{matchAnalysis.summary}</p>
+										<Button
+											variant="outline"
+											size="sm"
+											className="mt-4"
+											onClick={handleAnalyze}
+											disabled={analyzing}
+										>
+											{analyzing ? (
+												<Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+											) : (
+												<RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+											)}
+											Re-analyze
+										</Button>
+									</div>
+								</CardContent>
+							</Card>
+
+							{/* Matched Skills */}
+							{matchAnalysis.matchedSkills.length > 0 && (
+								<Card size="sm">
+									<CardHeader>
+										<CardTitle className="text-emerald-400">Matched Skills</CardTitle>
+									</CardHeader>
+									<CardContent className="space-y-3">
+										{matchAnalysis.matchedSkills.map((s) => (
+											<div key={s.skill} className="space-y-1">
+												<div className="flex items-center gap-2">
+													<Badge className="border-0 bg-emerald-500/15 text-emerald-400">
+														{s.skill}
+													</Badge>
+													<span className="text-[10px] uppercase text-muted-foreground">
+														{s.relevance}
+													</span>
+												</div>
+												<p className="text-xs text-muted-foreground">{s.evidence}</p>
+											</div>
+										))}
+									</CardContent>
+								</Card>
+							)}
+
+							{/* Missing Skills */}
+							{matchAnalysis.missingSkills.length > 0 && (
+								<Card size="sm">
+									<CardHeader>
+										<CardTitle className="text-amber-400">Skill Gaps</CardTitle>
+									</CardHeader>
+									<CardContent className="space-y-3">
+										{matchAnalysis.missingSkills.map((s) => (
+											<div key={s.skill} className="space-y-1">
+												<div className="flex items-center gap-2">
+													<Badge
+														className={cn(
+															"border-0",
+															s.importance === "required"
+																? "bg-red-500/15 text-red-400"
+																: "bg-amber-500/15 text-amber-400",
+														)}
+													>
+														{s.skill}
+													</Badge>
+													<span className="text-[10px] uppercase text-muted-foreground">
+														{s.importance}
+													</span>
+												</div>
+												<p className="text-xs text-muted-foreground">{s.suggestion}</p>
+											</div>
+										))}
+									</CardContent>
+								</Card>
+							)}
+
+							{/* Recommendations */}
+							{matchAnalysis.recommendations.length > 0 && (
+								<Card size="sm">
+									<CardHeader>
+										<CardTitle>Recommendations</CardTitle>
+									</CardHeader>
+									<CardContent>
+										<ul className="space-y-2 text-sm text-muted-foreground">
+											{matchAnalysis.recommendations.map((rec) => (
+												<li key={rec} className="flex gap-2">
+													<Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+													{rec}
+												</li>
+											))}
+										</ul>
+									</CardContent>
+								</Card>
+							)}
+						</div>
+					) : (
+						<Card>
+							<CardContent className="flex flex-col items-center justify-center py-12 text-center">
+								<Target className="mb-3 h-10 w-10 text-muted-foreground/40" />
+								<h3 className="mb-1 text-lg font-medium">Match Analysis</h3>
+								<p className="mb-4 max-w-sm text-sm text-muted-foreground">
+									Compare your master CV against this job's requirements to see how well you match.
+								</p>
+								<Button onClick={handleAnalyze} disabled={analyzing}>
+									{analyzing ? (
+										<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+									) : (
+										<Sparkles className="mr-2 h-4 w-4" />
+									)}
+									{analyzing ? "Analyzing..." : "Run Analysis"}
+								</Button>
+							</CardContent>
+						</Card>
+					)}
 				</TabsContent>
 
-				{/* Tailored CV Tab — Phase 4 */}
+				{/* ─── Tailored CV Tab ─────────────────────────────────────── */}
 				<TabsContent value="tailored" className="mt-4">
-					<Card>
-						<CardContent className="flex flex-col items-center justify-center py-12 text-center">
-							<Sparkles className="mb-3 h-10 w-10 text-muted-foreground/40" />
-							<h3 className="mb-1 text-lg font-medium">Tailored CV</h3>
-							<p className="mb-4 max-w-sm text-sm text-muted-foreground">
-								AI-generated CV optimized for this specific job. Coming in Phase 4.
-							</p>
-							<Button disabled>
-								<Sparkles className="mr-2 h-4 w-4" />
-								Generate Tailored CV
-							</Button>
-						</CardContent>
-					</Card>
+					{application.tailoredCVEdited ? (
+						<div className="space-y-3">
+							<div className="flex items-center justify-between">
+								<div className="flex items-center gap-2">
+									<h3 className="text-sm font-medium">Tailored CV Editor</h3>
+									<SaveIndicator saving={savingCV} saved={savedCV} />
+								</div>
+								<div className="flex gap-2">
+									<Button
+										variant="outline"
+										size="sm"
+										onClick={() => copyToClipboard(application.tailoredCVEdited!)}
+									>
+										<Clipboard className="mr-1.5 h-3.5 w-3.5" />
+										Copy
+									</Button>
+									<Button
+										variant="outline"
+										size="sm"
+										onClick={() => {
+											if (application.tailoredCVEdited !== application.tailoredCV) {
+												setConfirmRegenerate("tailor");
+											} else {
+												handleTailor();
+											}
+										}}
+										disabled={tailoring}
+									>
+										{tailoring ? (
+											<Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+										) : (
+											<RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+										)}
+										Regenerate
+									</Button>
+								</div>
+							</div>
+							<TiptapEditor content={application.tailoredCVEdited} onUpdate={handleCVUpdate} />
+						</div>
+					) : (
+						<Card>
+							<CardContent className="flex flex-col items-center justify-center py-12 text-center">
+								<Sparkles className="mb-3 h-10 w-10 text-muted-foreground/40" />
+								<h3 className="mb-1 text-lg font-medium">Tailored CV</h3>
+								<p className="mb-4 max-w-sm text-sm text-muted-foreground">
+									{matchAnalysis
+										? "Generate an AI-tailored version of your CV optimized for this job."
+										: "Run match analysis first, then generate a tailored CV."}
+								</p>
+								<Button
+									onClick={handleTailor}
+									disabled={tailoring || !matchAnalysis}
+								>
+									{tailoring ? (
+										<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+									) : (
+										<Sparkles className="mr-2 h-4 w-4" />
+									)}
+									{tailoring ? "Generating..." : "Generate Tailored CV"}
+								</Button>
+							</CardContent>
+						</Card>
+					)}
 				</TabsContent>
 
-				{/* Cover Letter Tab — Phase 4 */}
+				{/* ─── Cover Letter Tab ────────────────────────────────────── */}
 				<TabsContent value="cover-letter" className="mt-4">
-					<Card>
-						<CardContent className="flex flex-col items-center justify-center py-12 text-center">
-							<FileText className="mb-3 h-10 w-10 text-muted-foreground/40" />
-							<h3 className="mb-1 text-lg font-medium">Cover Letter</h3>
-							<p className="mb-4 max-w-sm text-sm text-muted-foreground">
-								AI-generated cover letter tailored to this job. Coming in Phase 4.
-							</p>
-							<Button disabled>
-								<Sparkles className="mr-2 h-4 w-4" />
-								Generate Cover Letter
-							</Button>
-						</CardContent>
-					</Card>
+					{application.coverLetter ? (
+						<div className="space-y-3">
+							<div className="flex items-center justify-between">
+								<div className="flex items-center gap-2">
+									<h3 className="text-sm font-medium">Cover Letter Editor</h3>
+									<SaveIndicator saving={savingCL} saved={savedCL} />
+								</div>
+								<div className="flex gap-2">
+									<Button
+										variant="outline"
+										size="sm"
+										onClick={() => copyToClipboard(application.coverLetter!)}
+									>
+										<Clipboard className="mr-1.5 h-3.5 w-3.5" />
+										Copy
+									</Button>
+									<Button
+										variant="outline"
+										size="sm"
+										onClick={() => setConfirmRegenerate("cover-letter")}
+										disabled={generatingCL}
+									>
+										{generatingCL ? (
+											<Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+										) : (
+											<RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+										)}
+										Regenerate
+									</Button>
+								</div>
+							</div>
+							<TiptapEditor content={application.coverLetter} onUpdate={handleCLUpdate} />
+						</div>
+					) : (
+						<Card>
+							<CardContent className="flex flex-col items-center justify-center py-12 text-center">
+								<FileText className="mb-3 h-10 w-10 text-muted-foreground/40" />
+								<h3 className="mb-1 text-lg font-medium">Cover Letter</h3>
+								<p className="mb-4 max-w-sm text-sm text-muted-foreground">
+									Generate a personalized cover letter for this application.
+								</p>
+								<Button onClick={handleGenerateCoverLetter} disabled={generatingCL}>
+									{generatingCL ? (
+										<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+									) : (
+										<Sparkles className="mr-2 h-4 w-4" />
+									)}
+									{generatingCL ? "Generating..." : "Generate Cover Letter"}
+								</Button>
+							</CardContent>
+						</Card>
+					)}
 				</TabsContent>
 			</Tabs>
 
@@ -351,6 +658,53 @@ export default function ApplicationDetailPage() {
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
+
+			{/* Regenerate Confirmation Dialog */}
+			<Dialog open={!!confirmRegenerate} onOpenChange={(open) => !open && setConfirmRegenerate(null)}>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>Regenerate Content</DialogTitle>
+						<DialogDescription>
+							This will overwrite your current edits with a new AI-generated version. This action
+							cannot be undone.
+						</DialogDescription>
+					</DialogHeader>
+					<DialogFooter>
+						<Button variant="outline" onClick={() => setConfirmRegenerate(null)}>
+							Cancel
+						</Button>
+						<Button
+							onClick={() => {
+								if (confirmRegenerate === "tailor") handleTailor();
+								else handleGenerateCoverLetter();
+							}}
+						>
+							<RefreshCw className="mr-2 h-4 w-4" />
+							Regenerate
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
 		</div>
 	);
+}
+
+function SaveIndicator({ saving, saved }: { saving: boolean; saved: boolean }) {
+	if (saving) {
+		return (
+			<span className="flex items-center gap-1 text-xs text-muted-foreground">
+				<Loader2 className="h-3 w-3 animate-spin" />
+				Saving...
+			</span>
+		);
+	}
+	if (saved) {
+		return (
+			<span className="flex items-center gap-1 text-xs text-emerald-400">
+				<Check className="h-3 w-3" />
+				Saved
+			</span>
+		);
+	}
+	return null;
 }

@@ -135,7 +135,9 @@ export interface ParsedRequirements {
 	employmentType: string;
 }
 
-export async function parseJobRequirements(description: string): Promise<ParsedRequirements> {
+export async function parseJobRequirements(
+	description: string,
+): Promise<ParsedRequirements> {
 	return withRetry(async () => {
 		const response = await ai.models.generateContent({
 			model: MODEL,
@@ -166,5 +168,163 @@ ${description}`,
 		const text = response.text;
 		if (!text) throw new Error("Empty response from Gemini");
 		return JSON.parse(text) as ParsedRequirements;
+	});
+}
+
+// ─── Match Analysis ──────────────────────────────────────────────────
+
+export interface MatchAnalysis {
+	matchScore: number;
+	summary: string;
+	matchedSkills: Array<{
+		skill: string;
+		evidence: string;
+		relevance: "high" | "medium" | "low";
+	}>;
+	missingSkills: Array<{
+		skill: string;
+		importance: "required" | "preferred";
+		suggestion: string;
+	}>;
+	recommendations: string[];
+}
+
+export async function analyzeMatch(
+	cvText: string,
+	jobDescription: string,
+): Promise<MatchAnalysis> {
+	return withRetry(async () => {
+		const response = await ai.models.generateContent({
+			model: MODEL,
+			contents: [
+				{
+					role: "user",
+					parts: [
+						{
+							text: `You are a senior recruitment consultant and ATS optimization expert. Analyze how well this CV matches the job description.
+
+Return a JSON object with:
+- matchScore: number 0-100 (realistic assessment — 90+ is rare)
+- summary: string (2-3 sentence overview of fit)
+- matchedSkills: array of { skill: string, evidence: string (quote or paraphrase from CV), relevance: "high"|"medium"|"low" }
+- missingSkills: array of { skill: string, importance: "required"|"preferred", suggestion: string (how to address this gap) }
+- recommendations: string[] (3-5 actionable tips to improve the match)
+
+Be thorough but honest. Only mark skills as matched if there is clear evidence in the CV.
+
+CV TEXT:
+${cvText}
+
+JOB DESCRIPTION:
+${jobDescription}`,
+						},
+					],
+				},
+			],
+			config: { responseMimeType: "application/json" },
+		});
+
+		const text = response.text;
+		if (!text) throw new Error("Empty response from Gemini");
+		return JSON.parse(text) as MatchAnalysis;
+	});
+}
+
+// ─── CV Tailoring ────────────────────────────────────────────────────
+
+export async function tailorCV(
+	cvText: string,
+	jobDescription: string,
+	matchAnalysis: MatchAnalysis,
+): Promise<string> {
+	return withRetry(async () => {
+		const response = await ai.models.generateContent({
+			model: MODEL,
+			contents: [
+				{
+					role: "user",
+					parts: [
+						{
+							text: `You are an expert CV writer and ATS optimization specialist. Tailor this CV for the specific job description.
+
+CRITICAL RULES:
+- NEVER fabricate experience, skills, or qualifications
+- Reorder sections to prioritize the most relevant experience
+- Mirror exact keywords from the job description where truthful
+- Add quantifiable metrics where possible (from existing experience)
+- Compress or remove less relevant experience
+- Strengthen bullet points to align with job requirements
+- Maintain professional, concise language
+
+Output the tailored CV as clean markdown. Use proper headings (##), bullet points, and formatting.
+
+ORIGINAL CV:
+${cvText}
+
+JOB DESCRIPTION:
+${jobDescription}
+
+MATCH ANALYSIS:
+Matched skills: ${matchAnalysis.matchedSkills.map((s) => s.skill).join(", ")}
+Missing skills: ${matchAnalysis.missingSkills.map((s) => s.skill).join(", ")}
+Recommendations: ${matchAnalysis.recommendations.join("; ")}`,
+						},
+					],
+				},
+			],
+		});
+
+		const text = response.text;
+		if (!text) throw new Error("Empty response from Gemini");
+		return text;
+	});
+}
+
+// ─── Cover Letter Generation ─────────────────────────────────────────
+
+export async function generateCoverLetter(
+	cvText: string,
+	jobDescription: string,
+	company: string,
+	jobTitle: string,
+): Promise<string> {
+	return withRetry(async () => {
+		const response = await ai.models.generateContent({
+			model: MODEL,
+			contents: [
+				{
+					role: "user",
+					parts: [
+						{
+							text: `You are an expert cover letter writer. Write a compelling cover letter for this job application.
+
+RULES:
+- 3-4 paragraphs maximum
+- No placeholder brackets like [Your Name] — write complete text
+- Confident but authentic tone — not arrogant
+- Reference specific experience from the CV that matches the job
+- Show genuine interest in the company and role
+- Include a strong opening that grabs attention
+- End with a clear call to action
+
+Output as clean markdown.
+
+CV TEXT:
+${cvText}
+
+JOB DESCRIPTION:
+${jobDescription}
+
+COMPANY: ${company}
+JOB TITLE: ${jobTitle}`,
+						},
+					],
+				},
+			],
+		});
+
+		const text = response.text;
+		if (!text) throw new Error("Empty response from Gemini");
+		return text;
 	});
 }
