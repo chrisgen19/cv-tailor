@@ -1,6 +1,9 @@
 import mammoth from "mammoth";
 import { PDFParse } from "pdf-parse";
 
+// Disable worker to avoid missing worker file in Next.js server environment
+PDFParse.setWorker("");
+
 export async function extractTextFromPdf(buffer: Buffer): Promise<string> {
 	const parser = new PDFParse({ data: new Uint8Array(buffer) });
 	const result = await parser.getText();
