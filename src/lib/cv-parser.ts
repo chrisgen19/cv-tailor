@@ -1,16 +1,12 @@
 import mammoth from "mammoth";
-import { PDFParse } from "pdf-parse";
-
-// Disable worker to avoid missing worker file in Next.js server environment
-PDFParse.setWorker("");
+import { extractText as extractPdfText, getDocumentProxy } from "unpdf";
 
 export async function extractTextFromPdf(buffer: Buffer): Promise<string> {
-	const parser = new PDFParse({ data: new Uint8Array(buffer) });
-	const result = await parser.getText();
-	await parser.destroy();
-	const text = result.text.trim();
-	if (!text) throw new Error("No text content found in PDF");
-	return text;
+	const pdf = await getDocumentProxy(new Uint8Array(buffer));
+	const { text } = await extractPdfText(pdf, { mergePages: true });
+	const trimmed = (text as string).trim();
+	if (!trimmed) throw new Error("No text content found in PDF");
+	return trimmed;
 }
 
 export async function extractTextFromDocx(buffer: Buffer): Promise<string> {

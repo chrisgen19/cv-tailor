@@ -40,6 +40,7 @@ export function TiptapEditor({ content, onUpdate, editable = true, className }: 
 		],
 		content,
 		editable,
+		immediatelyRender: false,
 		onUpdate: ({ editor: e }) => {
 			onUpdateRef.current(e.getHTML());
 		},
