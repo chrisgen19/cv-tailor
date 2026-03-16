@@ -32,14 +32,15 @@ Use latest stable versions of everything.
 | Database | PostgreSQL | Primary data store |
 | ORM | Prisma | Type-safe DB access + migrations |
 | Auth | Better Auth | Email/password + Google OAuth |
-| AI | Google Gemini via `@google/genai` SDK (`gemini-2.5-flash`) | CV parsing, analysis, generation |
+| AI Provider | Google Gemini via `@google/genai` SDK (`gemini-3.1-pro-preview`) | CV parsing, analysis, generation |
 | Styling | Tailwind CSS v4 | Utility-first styling |
 | UI Components | shadcn/ui | Accessible component primitives |
 | Rich Text Editor | Tiptap | Inline CV/cover letter editing with formatting |
 | PDF Export | @react-pdf/renderer | Generate downloadable PDFs |
 | DOCX Export | docx | Generate downloadable DOCX files |
 | Job Scraping | @extractus/article-extractor | Scrape job descriptions from URLs |
-| File Upload | UploadThing | CV file uploads (PDF/DOCX) |
+| File Storage | Cloudflare R2 via `@aws-sdk/client-s3` + `@aws-sdk/s3-request-presigner` | S3-compatible object storage for CV uploads (zero egress fees) |
+| File Upload UI | react-dropzone | Drag-and-drop file upload zone |
 | PDF Parsing | pdf-parse | Extract text from uploaded PDF CVs |
 | DOCX Parsing | mammoth | Extract text from uploaded DOCX CVs |
 | Validation | Zod | All form/API validation schemas |
@@ -172,7 +173,6 @@ src/
 │   │   │       ├── tailor/route.ts       # Trigger Gemini CV tailoring
 │   │   │       ├── cover-letter/route.ts # Trigger Gemini cover letter
 │   │   │       └── export/route.ts       # Generate PDF or DOCX
-│   │   └── uploadthing/route.ts
 │   ├── layout.tsx                  # Root layout
 │   └── page.tsx                    # Landing/marketing page → redirect if logged in
 ├── components/
@@ -188,6 +188,7 @@ src/
 │   ├── auth-client.ts              # Better Auth client
 │   ├── prisma.ts                   # Prisma client singleton
 │   ├── gemini.ts                   # Gemini AI client + all prompt functions
+│   ├── r2.ts                       # Cloudflare R2 client + presigned URL helpers
 │   ├── scraper.ts                  # URL → job description extraction
 │   ├── cv-parser.ts                # PDF/DOCX → text extraction
 │   ├── export.ts                   # PDF and DOCX generation functions
@@ -241,10 +242,12 @@ src/
 
 **Goal:** Users can upload a PDF or DOCX CV, have it parsed into structured sections by Gemini, and manage their master CV.
 
-- [ ] Install UploadThing and configure file router (PDF + DOCX, max 10MB)
+- [ ] Install `@aws-sdk/client-s3` + `@aws-sdk/s3-request-presigner` and configure Cloudflare R2 client (`lib/r2.ts`)
+- [ ] Install react-dropzone for drag-and-drop upload UI
 - [ ] Install pdf-parse and mammoth for file text extraction
 - [ ] Build `lib/cv-parser.ts` (PDF → pdf-parse, DOCX → mammoth → raw text)
-- [ ] Build CV upload API route (`/api/cv/upload`): upload → extract text → store rawText + originalFileName + originalFileUrl in MasterCV
+- [ ] Build presigned URL API route (`/api/cv/presigned-url`): generate presigned PUT URL for R2
+- [ ] Build CV upload API route (`/api/cv/upload`): confirm upload → extract text from R2 file → store rawText + originalFileName + originalFileUrl in MasterCV
 - [ ] Set up `@google/genai` client in `lib/gemini.ts`
 - [ ] Write `parseCV()` Gemini function: raw text → structured JSON (contact, summary, experience[], education[], skills[], certifications[])
 - [ ] Store `parsedSections` JSON in MasterCV after parsing
@@ -420,7 +423,7 @@ src/
 ### 2. Master CV Management (`/cv`)
 
 **Upload Flow:**
-1. User uploads PDF or DOCX via drag-and-drop zone (UploadThing)
+1. User uploads PDF or DOCX via drag-and-drop zone (react-dropzone → presigned URL → Cloudflare R2)
 2. Server extracts raw text (PDF → pdf-parse, DOCX → mammoth)
 3. Send extracted text to Gemini: "Parse this CV into structured sections: contact info, professional summary, work experience (array with company, title, dates, bullets), education, technical skills (categorized), certifications. Return as JSON."
 4. Store both `rawText` and `parsedSections` in MasterCV
@@ -498,7 +501,7 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 ```
 
 **All Gemini calls must:**
-- Use `gemini-2.5-flash` model
+- Use `gemini-3.1-pro-preview` model
 - Set `responseMimeType: "application/json"` for structured output
 - Be wrapped in try/catch with meaningful error messages
 - Have a retry mechanism (2 retries with exponential backoff)
@@ -553,7 +556,10 @@ BETTER_AUTH_URL="http://localhost:3000"
 GOOGLE_CLIENT_ID="..."
 GOOGLE_CLIENT_SECRET="..."
 GEMINI_API_KEY="..."
-UPLOADTHING_TOKEN="..."
+CLOUDFLARE_R2_ACCESS_KEY_ID="..."
+CLOUDFLARE_R2_SECRET_ACCESS_KEY="..."
+CLOUDFLARE_R2_BUCKET_NAME="cv-tailor"
+CLOUDFLARE_R2_ENDPOINT="https://<account-id>.r2.cloudflarestorage.com"
 ```
 
 ---
