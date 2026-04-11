@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import { headers } from "next/headers";
+import { cache } from "react";
 import { AppearanceProvider } from "@/components/providers/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { auth } from "@/lib/auth";
@@ -31,28 +32,35 @@ export const metadata: Metadata = {
 		"Upload your master CV, paste a job description, and get a tailored CV optimized for each job posting.",
 };
 
-async function getInitialAppearance(): Promise<{
+const getInitialAppearance = cache(async (): Promise<{
 	mode: ThemeMode;
 	accent: ThemeAccent;
-}> {
-	const session = await auth.api.getSession({ headers: await headers() });
-	if (!session) {
+}> => {
+	try {
+		const session = await auth.api.getSession({ headers: await headers() });
+		if (!session) {
+			return {
+				mode: DEFAULT_THEME_MODE,
+				accent: DEFAULT_THEME_ACCENT,
+			};
+		}
+
+		const user = await prisma.user.findUnique({
+			where: { id: session.user.id },
+			select: { themeMode: true, themeAccent: true },
+		});
+
+		return {
+			mode: isThemeMode(user?.themeMode) ? user.themeMode : DEFAULT_THEME_MODE,
+			accent: isThemeAccent(user?.themeAccent) ? user.themeAccent : DEFAULT_THEME_ACCENT,
+		};
+	} catch {
 		return {
 			mode: DEFAULT_THEME_MODE,
 			accent: DEFAULT_THEME_ACCENT,
 		};
 	}
-
-	const user = await prisma.user.findUnique({
-		where: { id: session.user.id },
-		select: { themeMode: true, themeAccent: true },
-	});
-
-	return {
-		mode: isThemeMode(user?.themeMode) ? user.themeMode : DEFAULT_THEME_MODE,
-		accent: isThemeAccent(user?.themeAccent) ? user.themeAccent : DEFAULT_THEME_ACCENT,
-	};
-}
+});
 
 export default async function RootLayout({
 	children,

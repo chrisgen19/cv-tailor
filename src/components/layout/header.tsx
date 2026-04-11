@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { signOut, useSession } from "@/lib/auth-client";
 import { isThemeMode, type ThemeMode } from "@/lib/theme";
+import { toast } from "sonner";
 
 export function Header() {
 	const { data: session } = useSession();
@@ -43,7 +44,7 @@ export function Header() {
 				body: JSON.stringify({ themeMode: nextMode }),
 			});
 		} catch {
-			// Keep the previewed mode; settings page remains source of truth for explicit saves.
+			toast.error("Theme change could not be saved");
 		}
 	};
 

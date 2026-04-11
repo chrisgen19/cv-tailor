@@ -7,10 +7,7 @@ import { useAppearance } from "@/components/providers/theme-provider";
 import { signOut, useSession } from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
 import {
-	DEFAULT_THEME_ACCENT,
-	DEFAULT_THEME_MODE,
 	THEME_ACCENTS,
-	THEME_MODES,
 	type ThemeAccent,
 	type ThemeMode,
 } from "@/lib/theme";
@@ -66,6 +63,7 @@ export default function SettingsPage() {
 	const [deleting, setDeleting] = useState(false);
 	const [themeMode, setThemeMode] = useState<ThemeMode>(mode);
 	const [themeAccent, setThemeAccent] = useState<ThemeAccent>(accent);
+	const [hasAppearanceChanges, setHasAppearanceChanges] = useState(false);
 
 	useEffect(() => {
 		if (session?.user?.name) {
@@ -82,41 +80,36 @@ export default function SettingsPage() {
 	}, [accent]);
 
 	useEffect(() => {
-		let cancelled = false;
-		const loadProfile = async () => {
+		if (!hasAppearanceChanges) {
+			return;
+		}
+
+		const timeoutId = window.setTimeout(async () => {
+			setAppearanceSaving(true);
 			try {
-				const res = await fetch("/api/settings/profile", { method: "GET" });
+				const res = await fetch("/api/settings/profile", {
+					method: "PATCH",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({
+						themeMode,
+						themeAccent,
+					}),
+				});
 				if (!res.ok) {
-					return;
+					throw new Error();
 				}
-				const data = (await res.json()) as {
-					name: string;
-					themeMode?: ThemeMode;
-					themeAccent?: ThemeAccent;
-				};
-				if (cancelled) {
-					return;
-				}
-				setName(data.name);
-				const nextMode = THEME_MODES.includes(data.themeMode ?? DEFAULT_THEME_MODE)
-					? (data.themeMode ?? DEFAULT_THEME_MODE)
-					: DEFAULT_THEME_MODE;
-				const nextAccent =
-					THEME_ACCENTS.find((item) => item.value === data.themeAccent)?.value ??
-					DEFAULT_THEME_ACCENT;
-				setThemeMode(nextMode);
-				setThemeAccent(nextAccent);
-				setMode(nextMode);
-				setAccent(nextAccent);
+				setHasAppearanceChanges(false);
 			} catch {
-				// Keep existing local state if loading fails.
+				toast.error("Failed to save appearance");
+			} finally {
+				setAppearanceSaving(false);
 			}
-		};
-		void loadProfile();
+		}, 300);
+
 		return () => {
-			cancelled = true;
+			window.clearTimeout(timeoutId);
 		};
-	}, [setAccent, setMode]);
+	}, [hasAppearanceChanges, themeAccent, themeMode]);
 
 	const handleSaveName = async () => {
 		if (!name.trim()) {
@@ -142,33 +135,13 @@ export default function SettingsPage() {
 	const handleModePreview = (nextMode: ThemeMode) => {
 		setThemeMode(nextMode);
 		setMode(nextMode);
+		setHasAppearanceChanges(true);
 	};
 
 	const handleAccentPreview = (nextAccent: ThemeAccent) => {
 		setThemeAccent(nextAccent);
 		setAccent(nextAccent);
-	};
-
-	const handleSaveAppearance = async () => {
-		setAppearanceSaving(true);
-		try {
-			const res = await fetch("/api/settings/profile", {
-				method: "PATCH",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({
-					themeMode,
-					themeAccent,
-				}),
-			});
-			if (!res.ok) {
-				throw new Error();
-			}
-			toast.success("Appearance updated");
-		} catch {
-			toast.error("Failed to update appearance");
-		} finally {
-			setAppearanceSaving(false);
-		}
+		setHasAppearanceChanges(true);
 	};
 
 	const handleDeleteAccount = async () => {
@@ -309,10 +282,10 @@ export default function SettingsPage() {
 						</div>
 					</div>
 
-					<Button onClick={handleSaveAppearance} disabled={appearanceSaving}>
-						{appearanceSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-						Save Appearance
-					</Button>
+					<p className="flex items-center gap-2 text-xs text-muted-foreground">
+						{appearanceSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+						Appearance saves automatically
+					</p>
 				</CardContent>
 			</Card>
 
