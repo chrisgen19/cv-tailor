@@ -1,19 +1,25 @@
 "use client";
 
-import { LogOut, User } from "lucide-react";
+import { LogOut, Monitor, Moon, Sun, User } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useAppearance } from "@/components/providers/appearance-provider";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
+	DropdownMenuLabel,
+	DropdownMenuRadioGroup,
+	DropdownMenuRadioItem,
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { signOut, useSession } from "@/lib/auth-client";
+import { isThemeMode, type ThemeMode } from "@/lib/theme";
 
 export function Header() {
 	const { data: session } = useSession();
+	const { mode, setMode } = useAppearance();
 	const router = useRouter();
 
 	const handleSignOut = async () => {
@@ -27,6 +33,19 @@ export function Header() {
 		.join("")
 		.toUpperCase()
 		.slice(0, 2);
+
+	const handleModeChange = async (nextMode: ThemeMode) => {
+		setMode(nextMode);
+		try {
+			await fetch("/api/settings/profile", {
+				method: "PATCH",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ themeMode: nextMode }),
+			});
+		} catch {
+			// Keep the previewed mode; settings page remains source of truth for explicit saves.
+		}
+	};
 
 	return (
 		<header className="flex h-14 items-center justify-between border-b border-border bg-background px-4 md:px-6">
@@ -51,6 +70,30 @@ export function Header() {
 						<p className="text-sm font-medium">{session?.user?.name}</p>
 						<p className="text-xs text-muted-foreground">{session?.user?.email}</p>
 					</div>
+					<DropdownMenuSeparator />
+					<DropdownMenuLabel>Theme mode</DropdownMenuLabel>
+					<DropdownMenuRadioGroup
+						value={mode}
+						onValueChange={(nextValue) => {
+							if (!isThemeMode(nextValue)) {
+								return;
+							}
+							void handleModeChange(nextValue);
+						}}
+					>
+						<DropdownMenuRadioItem value="system">
+							<Monitor className="mr-2 h-4 w-4" />
+							System
+						</DropdownMenuRadioItem>
+						<DropdownMenuRadioItem value="dark">
+							<Moon className="mr-2 h-4 w-4" />
+							Dark
+						</DropdownMenuRadioItem>
+						<DropdownMenuRadioItem value="light">
+							<Sun className="mr-2 h-4 w-4" />
+							Light
+						</DropdownMenuRadioItem>
+					</DropdownMenuRadioGroup>
 					<DropdownMenuSeparator />
 					<DropdownMenuItem onClick={handleSignOut} className="text-destructive">
 						<LogOut className="mr-2 h-4 w-4" />
