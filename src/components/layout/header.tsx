@@ -38,11 +38,14 @@ export function Header() {
 	const handleModeChange = async (nextMode: ThemeMode) => {
 		setMode(nextMode);
 		try {
-			await fetch("/api/settings/profile", {
+			const res = await fetch("/api/settings/profile", {
 				method: "PATCH",
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({ themeMode: nextMode }),
 			});
+			if (!res.ok) {
+				throw new Error();
+			}
 		} catch {
 			toast.error("Theme change could not be saved");
 		}

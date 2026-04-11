@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Check, Loader2, Monitor, Moon, Sun, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useAppearance } from "@/components/providers/theme-provider";
@@ -64,6 +64,8 @@ export default function SettingsPage() {
 	const [themeMode, setThemeMode] = useState<ThemeMode>(mode);
 	const [themeAccent, setThemeAccent] = useState<ThemeAccent>(accent);
 	const [hasAppearanceChanges, setHasAppearanceChanges] = useState(false);
+	const appearanceSaveIdRef = useRef(0);
+	const appearanceSaveControllerRef = useRef<AbortController | null>(null);
 
 	useEffect(() => {
 		if (session?.user?.name) {
@@ -85,11 +87,16 @@ export default function SettingsPage() {
 		}
 
 		const timeoutId = window.setTimeout(async () => {
+			const requestId = ++appearanceSaveIdRef.current;
+			appearanceSaveControllerRef.current?.abort();
+			const controller = new AbortController();
+			appearanceSaveControllerRef.current = controller;
 			setAppearanceSaving(true);
 			try {
 				const res = await fetch("/api/settings/profile", {
 					method: "PATCH",
 					headers: { "Content-Type": "application/json" },
+					signal: controller.signal,
 					body: JSON.stringify({
 						themeMode,
 						themeAccent,
@@ -98,11 +105,18 @@ export default function SettingsPage() {
 				if (!res.ok) {
 					throw new Error();
 				}
-				setHasAppearanceChanges(false);
-			} catch {
+				if (requestId === appearanceSaveIdRef.current) {
+					setHasAppearanceChanges(false);
+				}
+			} catch (error) {
+				if (error instanceof DOMException && error.name === "AbortError") {
+					return;
+				}
 				toast.error("Failed to save appearance");
 			} finally {
-				setAppearanceSaving(false);
+				if (requestId === appearanceSaveIdRef.current) {
+					setAppearanceSaving(false);
+				}
 			}
 		}, 300);
 
@@ -110,6 +124,13 @@ export default function SettingsPage() {
 			window.clearTimeout(timeoutId);
 		};
 	}, [hasAppearanceChanges, themeAccent, themeMode]);
+
+	useEffect(
+		() => () => {
+			appearanceSaveControllerRef.current?.abort();
+		},
+		[],
+	);
 
 	const handleSaveName = async () => {
 		if (!name.trim()) {

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { unstable_cache } from "next/cache";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import { headers } from "next/headers";
 import { cache } from "react";
@@ -45,10 +46,7 @@ const getInitialAppearance = cache(async (): Promise<{
 			};
 		}
 
-		const user = await prisma.user.findUnique({
-			where: { id: session.user.id },
-			select: { themeMode: true, themeAccent: true },
-		});
+		const user = await getCachedUserAppearance(session.user.id);
 
 		return {
 			mode: isThemeMode(user?.themeMode) ? user.themeMode : DEFAULT_THEME_MODE,
@@ -61,6 +59,16 @@ const getInitialAppearance = cache(async (): Promise<{
 		};
 	}
 });
+
+const getCachedUserAppearance = unstable_cache(
+	async (userId: string) =>
+		prisma.user.findUnique({
+			where: { id: userId },
+			select: { themeMode: true, themeAccent: true },
+		}),
+	["user-appearance"],
+	{ revalidate: 60 },
+);
 
 export default async function RootLayout({
 	children,
