@@ -3,6 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "db:sync": "prisma db push && prisma generate",
+    "predev": "npm run db:sync",
     "dev": "next dev --turbopack",
     "build": "prisma generate && next build",
     "postinstall": "node -e \"const cp=require('node:child_process');try{cp.execSync('prisma --version',{stdio:'ignore'});}catch(e){if(e?.code==='ENOENT'||e?.status===127){console.log('Skipping prisma generate: Prisma CLI not installed');process.exit(0);}throw e;}cp.execSync('prisma generate',{stdio:'inherit'});\"",
