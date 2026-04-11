@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Check, Loader2, Monitor, Moon, Sun, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useAppearance } from "@/components/providers/appearance-provider";
+import { useAppearance } from "@/components/providers/theme-provider";
 import { signOut, useSession } from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
 import {

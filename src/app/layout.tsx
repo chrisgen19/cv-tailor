@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import { headers } from "next/headers";
-import { AppearanceProvider } from "@/components/providers/appearance-provider";
+import { AppearanceProvider } from "@/components/providers/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";

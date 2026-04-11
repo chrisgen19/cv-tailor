@@ -2,7 +2,7 @@
 
 import { LogOut, Monitor, Moon, Sun, User } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useAppearance } from "@/components/providers/appearance-provider";
+import { useAppearance } from "@/components/providers/theme-provider";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
 	DropdownMenu,
