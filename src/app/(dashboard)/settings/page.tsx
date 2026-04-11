@@ -1,9 +1,16 @@
 "use client";
 
-import { useState } from "react";
-import { Loader2, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Check, Loader2, Monitor, Moon, Sun, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useAppearance } from "@/components/providers/theme-provider";
 import { signOut, useSession } from "@/lib/auth-client";
+import { cn } from "@/lib/utils";
+import {
+	THEME_ACCENTS,
+	type ThemeAccent,
+	type ThemeMode,
+} from "@/lib/theme";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -18,14 +25,98 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 
+const MODE_OPTIONS: Array<{
+	value: ThemeMode;
+	label: string;
+	icon: typeof Monitor;
+	description: string;
+}> = [
+	{
+		value: "system",
+		label: "System",
+		icon: Monitor,
+		description: "Follow your device appearance",
+	},
+	{
+		value: "dark",
+		label: "Dark",
+		icon: Moon,
+		description: "High-contrast dark surfaces",
+	},
+	{
+		value: "light",
+		label: "Light",
+		icon: Sun,
+		description: "Clean and bright layout",
+	},
+];
+
 export default function SettingsPage() {
 	const { data: session } = useSession();
+	const { mode, accent, setMode, setAccent } = useAppearance();
 	const router = useRouter();
 
 	const [name, setName] = useState(session?.user?.name ?? "");
 	const [saving, setSaving] = useState(false);
+	const [appearanceSaving, setAppearanceSaving] = useState(false);
 	const [deleteOpen, setDeleteOpen] = useState(false);
 	const [deleting, setDeleting] = useState(false);
+	const savedModeRef = useRef(mode);
+	const savedAccentRef = useRef(accent);
+	const appearanceSaveControllerRef = useRef<AbortController | null>(null);
+
+	useEffect(() => {
+		if (session?.user?.name) {
+			setName(session.user.name);
+		}
+	}, [session?.user?.name]);
+
+	useEffect(() => {
+		if (mode === savedModeRef.current && accent === savedAccentRef.current) {
+			return;
+		}
+
+		const timeoutId = window.setTimeout(async () => {
+			appearanceSaveControllerRef.current?.abort();
+			const controller = new AbortController();
+			appearanceSaveControllerRef.current = controller;
+			setAppearanceSaving(true);
+			try {
+				const res = await fetch("/api/settings/profile", {
+					method: "PATCH",
+					headers: { "Content-Type": "application/json" },
+					signal: controller.signal,
+					body: JSON.stringify({
+						themeMode: mode,
+						themeAccent: accent,
+					}),
+				});
+				if (!res.ok) {
+					throw new Error();
+				}
+				savedModeRef.current = mode;
+				savedAccentRef.current = accent;
+			} catch (error) {
+				if (error instanceof DOMException && error.name === "AbortError") {
+					return;
+				}
+				toast.error("Failed to save appearance");
+			} finally {
+				setAppearanceSaving(false);
+			}
+		}, 300);
+
+		return () => {
+			window.clearTimeout(timeoutId);
+		};
+	}, [accent, mode]);
+
+	useEffect(
+		() => () => {
+			appearanceSaveControllerRef.current?.abort();
+		},
+		[],
+	);
 
 	const handleSaveName = async () => {
 		if (!name.trim()) {
@@ -48,6 +139,14 @@ export default function SettingsPage() {
 		}
 	};
 
+	const handleModeChange = (nextMode: ThemeMode) => {
+		setMode(nextMode);
+	};
+
+	const handleAccentChange = (nextAccent: ThemeAccent) => {
+		setAccent(nextAccent);
+	};
+
 	const handleDeleteAccount = async () => {
 		setDeleting(true);
 		try {
@@ -65,7 +164,9 @@ export default function SettingsPage() {
 		<div className="mx-auto max-w-2xl space-y-6">
 			<div>
 				<h1 className="text-2xl font-semibold">Settings</h1>
-				<p className="text-sm text-muted-foreground">Manage your profile and account</p>
+				<p className="text-sm text-muted-foreground">
+					Manage your profile, appearance, and account
+				</p>
 			</div>
 
 			{/* Profile */}
@@ -98,6 +199,96 @@ export default function SettingsPage() {
 						{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
 						Save Changes
 					</Button>
+				</CardContent>
+			</Card>
+
+			<Card>
+				<CardHeader>
+					<CardTitle>Appearance</CardTitle>
+					<p className="text-sm text-muted-foreground">
+						Choose your mode and accent for a cleaner, more personalized workspace.
+					</p>
+				</CardHeader>
+				<CardContent className="space-y-5">
+					<div className="space-y-2">
+						<Label>Theme mode</Label>
+						<div className="grid gap-2 sm:grid-cols-3">
+							{MODE_OPTIONS.map((option) => {
+								const Icon = option.icon;
+								const active = mode === option.value;
+								return (
+									<Button
+										key={option.value}
+										type="button"
+										variant={active ? "default" : "outline"}
+										className={cn(
+											"h-auto items-start justify-start gap-2 px-3 py-3 text-left",
+											!active && "hover:border-primary/40",
+										)}
+										onClick={() => handleModeChange(option.value)}
+									>
+										<Icon className="mt-0.5 h-4 w-4 shrink-0" />
+										<span className="space-y-0.5">
+											<span className="block text-sm font-medium">{option.label}</span>
+											<span className="block text-xs opacity-80">{option.description}</span>
+										</span>
+									</Button>
+								);
+							})}
+						</div>
+					</div>
+
+					<div className="space-y-2">
+						<Label>Accent color</Label>
+						<div className="grid grid-cols-4 gap-2 sm:grid-cols-8">
+							{THEME_ACCENTS.map((accentOption) => {
+								const selected = accent === accentOption.value;
+								return (
+									<button
+										type="button"
+										key={accentOption.value}
+										onClick={() => handleAccentChange(accentOption.value)}
+										className={cn(
+											"relative flex h-11 w-full items-center justify-center rounded-md border border-border transition focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+											selected && "border-primary ring-2 ring-primary/40",
+										)}
+										aria-label={`Use ${accentOption.label} accent`}
+										title={accentOption.label}
+									>
+										<span
+											className="h-6 w-6 rounded-full"
+											style={{ backgroundColor: accentOption.swatch }}
+										/>
+										{selected && <Check className="absolute h-4 w-4 text-foreground" />}
+									</button>
+								);
+							})}
+						</div>
+						<p className="text-xs text-muted-foreground">
+							Accent colors update key actions, focus rings, and charts.
+						</p>
+					</div>
+
+					<div className="rounded-lg border border-border bg-card p-3">
+						<p className="text-sm font-medium">Preview</p>
+						<p className="mb-3 text-xs text-muted-foreground">
+							How your selected style looks in UI controls
+						</p>
+						<div className="flex items-center gap-2">
+							<Button size="sm">Primary action</Button>
+							<Button size="sm" variant="outline">
+								Secondary
+							</Button>
+							<span className="inline-flex rounded-full bg-primary px-2 py-0.5 text-[11px] font-medium text-primary-foreground">
+								Accent
+							</span>
+						</div>
+					</div>
+
+					<p className="flex items-center gap-2 text-xs text-muted-foreground">
+						{appearanceSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+						Appearance saves automatically
+					</p>
 				</CardContent>
 			</Card>
 
