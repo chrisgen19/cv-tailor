@@ -1,17 +1,13 @@
 import type { Metadata } from "next";
-import { unstable_cache } from "next/cache";
 import { Inter, JetBrains_Mono } from "next/font/google";
-import { headers } from "next/headers";
-import { cache } from "react";
+import { cookies } from "next/headers";
 import { AppearanceProvider } from "@/components/providers/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
-import { auth } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
 import {
-	DEFAULT_THEME_ACCENT,
-	DEFAULT_THEME_MODE,
-	isThemeAccent,
-	isThemeMode,
+	normalizeThemeAccent,
+	normalizeThemeMode,
+	THEME_ACCENT_COOKIE,
+	THEME_MODE_COOKIE,
 	type ThemeAccent,
 	type ThemeMode,
 } from "@/lib/theme";
@@ -33,42 +29,16 @@ export const metadata: Metadata = {
 		"Upload your master CV, paste a job description, and get a tailored CV optimized for each job posting.",
 };
 
-const getInitialAppearance = cache(async (): Promise<{
+async function getInitialAppearance(): Promise<{
 	mode: ThemeMode;
 	accent: ThemeAccent;
-}> => {
-	try {
-		const session = await auth.api.getSession({ headers: await headers() });
-		if (!session) {
-			return {
-				mode: DEFAULT_THEME_MODE,
-				accent: DEFAULT_THEME_ACCENT,
-			};
-		}
-
-		const user = await getCachedUserAppearance(session.user.id);
-
-		return {
-			mode: isThemeMode(user?.themeMode) ? user.themeMode : DEFAULT_THEME_MODE,
-			accent: isThemeAccent(user?.themeAccent) ? user.themeAccent : DEFAULT_THEME_ACCENT,
-		};
-	} catch {
-		return {
-			mode: DEFAULT_THEME_MODE,
-			accent: DEFAULT_THEME_ACCENT,
-		};
-	}
-});
-
-const getCachedUserAppearance = unstable_cache(
-	async (userId: string) =>
-		prisma.user.findUnique({
-			where: { id: userId },
-			select: { themeMode: true, themeAccent: true },
-		}),
-	["user-appearance"],
-	{ revalidate: 60 },
-);
+}> {
+	const cookieStore = await cookies();
+	return {
+		mode: normalizeThemeMode(cookieStore.get(THEME_MODE_COOKIE)?.value),
+		accent: normalizeThemeAccent(cookieStore.get(THEME_ACCENT_COOKIE)?.value),
+	};
+}
 
 export default async function RootLayout({
 	children,

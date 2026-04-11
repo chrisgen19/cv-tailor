@@ -4,12 +4,12 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
-	DEFAULT_THEME_ACCENT,
-	DEFAULT_THEME_MODE,
+	normalizeThemeAccent,
+	normalizeThemeMode,
+	THEME_ACCENT_COOKIE,
 	THEME_ACCENT_VALUES,
+	THEME_MODE_COOKIE,
 	THEME_MODES,
-	isThemeAccent,
-	isThemeMode,
 } from "@/lib/theme";
 
 const updateProfileSchema = z.object({
@@ -45,12 +45,27 @@ export async function GET() {
 		return NextResponse.json({ error: "User not found" }, { status: 404 });
 	}
 
-	return NextResponse.json({
+	const response = NextResponse.json({
 		name: user.name,
 		email: user.email,
-		themeMode: isThemeMode(user.themeMode) ? user.themeMode : DEFAULT_THEME_MODE,
-		themeAccent: isThemeAccent(user.themeAccent) ? user.themeAccent : DEFAULT_THEME_ACCENT,
+		themeMode: normalizeThemeMode(user.themeMode),
+		themeAccent: normalizeThemeAccent(user.themeAccent),
 	});
+	response.cookies.set(THEME_MODE_COOKIE, normalizeThemeMode(user.themeMode), {
+		httpOnly: false,
+		sameSite: "lax",
+		secure: process.env.NODE_ENV === "production",
+		path: "/",
+		maxAge: 60 * 60 * 24 * 365,
+	});
+	response.cookies.set(THEME_ACCENT_COOKIE, normalizeThemeAccent(user.themeAccent), {
+		httpOnly: false,
+		sameSite: "lax",
+		secure: process.env.NODE_ENV === "production",
+		path: "/",
+		maxAge: 60 * 60 * 24 * 365,
+	});
+	return response;
 }
 
 export async function PATCH(request: Request) {
@@ -95,17 +110,28 @@ export async function PATCH(request: Request) {
 		},
 	});
 
-	return NextResponse.json({
+	const response = NextResponse.json({
 		success: true,
 		profile: {
 			name: updatedUser.name,
 			email: updatedUser.email,
-			themeMode: isThemeMode(updatedUser.themeMode)
-				? updatedUser.themeMode
-				: DEFAULT_THEME_MODE,
-			themeAccent: isThemeAccent(updatedUser.themeAccent)
-				? updatedUser.themeAccent
-				: DEFAULT_THEME_ACCENT,
+			themeMode: normalizeThemeMode(updatedUser.themeMode),
+			themeAccent: normalizeThemeAccent(updatedUser.themeAccent),
 		},
 	});
+	response.cookies.set(THEME_MODE_COOKIE, normalizeThemeMode(updatedUser.themeMode), {
+		httpOnly: false,
+		sameSite: "lax",
+		secure: process.env.NODE_ENV === "production",
+		path: "/",
+		maxAge: 60 * 60 * 24 * 365,
+	});
+	response.cookies.set(THEME_ACCENT_COOKIE, normalizeThemeAccent(updatedUser.themeAccent), {
+		httpOnly: false,
+		sameSite: "lax",
+		secure: process.env.NODE_ENV === "production",
+		path: "/",
+		maxAge: 60 * 60 * 24 * 365,
+	});
+	return response;
 }

@@ -36,6 +36,7 @@ export function Header() {
 		.slice(0, 2);
 
 	const handleModeChange = async (nextMode: ThemeMode) => {
+		const previousMode = mode;
 		setMode(nextMode);
 		try {
 			const res = await fetch("/api/settings/profile", {
@@ -47,6 +48,7 @@ export function Header() {
 				throw new Error();
 			}
 		} catch {
+			setMode(previousMode);
 			toast.error("Theme change could not be saved");
 		}
 	};

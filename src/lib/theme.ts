@@ -20,6 +20,8 @@ export const THEME_ACCENT_VALUES = THEME_ACCENTS.map((accent) => accent.value) a
 
 export const DEFAULT_THEME_MODE: ThemeMode = "system";
 export const DEFAULT_THEME_ACCENT: ThemeAccent = "teal";
+export const THEME_MODE_COOKIE = "cvt_theme_mode";
+export const THEME_ACCENT_COOKIE = "cvt_theme_accent";
 
 export function isThemeMode(value: string | null | undefined): value is ThemeMode {
 	return THEME_MODES.includes(value as ThemeMode);
@@ -27,4 +29,12 @@ export function isThemeMode(value: string | null | undefined): value is ThemeMod
 
 export function isThemeAccent(value: string | null | undefined): value is ThemeAccent {
 	return THEME_ACCENT_VALUES.includes(value as ThemeAccent);
+}
+
+export function normalizeThemeMode(value: string | null | undefined): ThemeMode {
+	return isThemeMode(value) ? value : DEFAULT_THEME_MODE;
+}
+
+export function normalizeThemeAccent(value: string | null | undefined): ThemeAccent {
+	return isThemeAccent(value) ? value : DEFAULT_THEME_ACCENT;
 }
