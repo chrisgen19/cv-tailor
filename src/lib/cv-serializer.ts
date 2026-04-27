@@ -16,7 +16,11 @@ export function jsonToMarkdown(cv: TailoredCv): string {
 	const lines: string[] = [];
 
 	lines.push(`# ${cv.header.name}`);
-	if (cv.header.title) lines.push(`**${cv.header.title}**`);
+	// Blank lines turn each header component into its own paragraph. Without
+	// them, markdown-to-html collapses title + contact into a single <p> per
+	// CommonMark soft-break rules, and the editor round-trip then merges them
+	// so parseHeader can no longer detect the **title** line.
+	if (cv.header.title) lines.push("", `**${cv.header.title}**`);
 
 	const contactBits: string[] = [];
 	if (cv.header.email) contactBits.push(cv.header.email);
@@ -25,7 +29,7 @@ export function jsonToMarkdown(cv: TailoredCv): string {
 	for (const link of cv.header.links) {
 		contactBits.push(link.label ? `[${link.label}](${link.url})` : link.url);
 	}
-	if (contactBits.length > 0) lines.push(contactBits.join(" • "));
+	if (contactBits.length > 0) lines.push("", contactBits.join(" • "));
 
 	if (cv.summary?.trim()) {
 		lines.push("", `## ${SECTION_HEADINGS.summary}`, "", cv.summary.trim());
@@ -204,7 +208,21 @@ function parseHeader(preamble: string[]): TailoredCv["header"] {
 	let location: string | undefined;
 
 	for (const candidate of contactCandidates) {
-		const tokens = candidate.split(/\s*[•|]\s*/);
+		// Legacy round-trip recovery: when an editor save merged the **Title**
+		// line onto the contact line (because of CommonMark soft-break collapse),
+		// the candidate looks like "**Senior Dev** email@x.com • phone • ...".
+		// Extract the leading **bold** as the title and let the rest fall through
+		// to normal contact parsing.
+		let working = candidate;
+		if (!title) {
+			const merged = working.match(/^\*\*([^*]+)\*\*\s*(.*)$/);
+			if (merged) {
+				title = merged[1].trim();
+				working = merged[2].replace(/^[\s•|]+/, "");
+				if (!working) continue;
+			}
+		}
+		const tokens = working.split(/\s*[•|]\s*/);
 		for (const token of tokens) {
 			if (!token.trim()) continue;
 			const linkMatch = token.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
