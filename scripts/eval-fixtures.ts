@@ -14,6 +14,8 @@
 export interface CvFixture {
 	id: string;
 	role: string;
+	/** Years of professional experience evident in the CV. Drives the 550 vs 950 word budget per TAILOR_SYSTEM_INSTRUCTION RULE 2. */
+	yearsOfExperience: number;
 	text: string;
 }
 
@@ -28,6 +30,7 @@ export const CV_FIXTURES: CvFixture[] = [
 	{
 		id: "cv-01-senior-fullstack",
 		role: "Senior Full-Stack Engineer (Node/React)",
+		yearsOfExperience: 9,
 		text: `Maria Chen
 maria.chen@example.com | +1-555-0101 | San Francisco, CA
 linkedin.com/in/mariachen | github.com/mariachen
@@ -61,6 +64,7 @@ Cloud: AWS (ECS, Lambda, RDS), Docker, Terraform`,
 	{
 		id: "cv-02-mid-data-scientist",
 		role: "Mid-Level Data Scientist (Python/ML)",
+		yearsOfExperience: 4,
 		text: `Jamal Roberts
 jamal.roberts@example.com | +1-555-0202 | Austin, TX
 linkedin.com/in/jamalroberts
@@ -92,6 +96,7 @@ Other: Git, Docker, FastAPI`,
 	{
 		id: "cv-03-junior-frontend",
 		role: "Junior Frontend Developer (Vue)",
+		yearsOfExperience: 2,
 		text: `Priya Singh
 priya.singh@example.com | +44-20-5550-0303 | London, UK
 linkedin.com/in/priyasingh
@@ -121,6 +126,7 @@ Other: Git, accessibility (WCAG), responsive design`,
 	{
 		id: "cv-04-devops",
 		role: "DevOps Engineer (AWS/Kubernetes)",
+		yearsOfExperience: 7,
 		text: `Tomás Álvarez
 tomas.alvarez@example.com | +34-91-555-0404 | Madrid, Spain
 linkedin.com/in/tomasalvarez
@@ -152,6 +158,7 @@ Languages: Go, Python, Bash`,
 	{
 		id: "cv-05-designer-coder",
 		role: "Product Designer with Frontend Skills",
+		yearsOfExperience: 5,
 		text: `Yuki Tanaka
 yuki.tanaka@example.com | +81-3-5555-0505 | Tokyo, Japan
 linkedin.com/in/yukitanaka | dribbble.com/yukitanaka

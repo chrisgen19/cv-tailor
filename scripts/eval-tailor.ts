@@ -30,12 +30,19 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import dotenv from "dotenv";
 
+// Load env BEFORE importing src/lib/gemini — its module body reads
+// process.env.GEMINI_API_KEY at instantiation, so a top-level static import
+// would race the dotenv calls below (ESM hoists imports above module body).
 dotenv.config({ path: ".env.local" });
 dotenv.config({ path: ".env" });
 
-import { tailorCV } from "../src/lib/gemini";
+// `import type` is erased at compile time and does NOT trigger module init,
+// so it's safe to use static type-only imports here. Runtime values must use
+// the dynamic import below.
 import type { MatchAnalysis } from "../src/lib/gemini";
 import type { TailoredCv } from "../src/lib/cv-schema";
+
+const { tailorCV } = await import("../src/lib/gemini");
 import { CV_FIXTURES, JD_FIXTURES } from "./eval-fixtures";
 import type { CvFixture, JdFixture } from "./eval-fixtures";
 
@@ -59,13 +66,23 @@ function parseArgs(argv: string[]): CliArgs {
 		skipCritique: false,
 		outDir: defaultOutDir(),
 	};
+	const requireValue = (flag: string, value: string | undefined): string => {
+		if (!value || value.startsWith("--")) {
+			throw new Error(`Missing value for ${flag}`);
+		}
+		return value;
+	};
 	for (let i = 0; i < argv.length; i++) {
 		const a = argv[i];
-		if (a === "--models") args.models = (argv[++i] ?? "").split(",").filter(Boolean);
-		else if (a === "--cv") args.cv = argv[++i];
-		else if (a === "--jd") args.jd = argv[++i];
+		if (a === "--models") {
+			const list = requireValue("--models", argv[++i]).split(",").filter(Boolean);
+			if (list.length === 0) throw new Error("--models requires at least one model id");
+			args.models = list;
+		} else if (a === "--cv") args.cv = requireValue("--cv", argv[++i]);
+		else if (a === "--jd") args.jd = requireValue("--jd", argv[++i]);
 		else if (a === "--skip-critique") args.skipCritique = true;
-		else if (a === "--out") args.outDir = argv[++i] ?? args.outDir;
+		else if (a === "--out") args.outDir = requireValue("--out", argv[++i]);
+		else throw new Error(`Unknown argument: ${a}`);
 	}
 	return args;
 }
@@ -145,8 +162,10 @@ async function runOne(model: string, cv: CvFixture, jd: JdFixture, skipCritique:
 		const latencyMs = Date.now() - start;
 		const flat = flattenTailoredText(tailored);
 		const totalWords = wordCount(flat);
-		// 550-word single-page budget; harness flags 950 (two-page) as also-passing.
-		const withinBudget = totalWords <= 950;
+		// Per TAILOR_SYSTEM_INSTRUCTION RULE 2: 550-word single-page budget by
+		// default; 950 only when CV evidences 10+ years of experience.
+		const wordBudget = cv.yearsOfExperience >= 10 ? 950 : 550;
+		const withinBudget = totalWords <= wordBudget;
 		return {
 			model,
 			cvId: cv.id,

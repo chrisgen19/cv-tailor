@@ -38,7 +38,7 @@ Written to `docs/evals/<UTC-date>/`:
 | ----------------- | ------------------------------------------------------------------ |
 | Latency           | Wall-clock around `tailorCV` call                                  |
 | Total words       | Words across summary + experience bullets + project bullets + skills |
-| Within budget     | `total_words ≤ 950` (two-page max per `TAILOR_SYSTEM_INSTRUCTION`) |
+| Within budget     | `total_words ≤ 550` (default) or `≤ 950` when fixture `yearsOfExperience ≥ 10` (per `TAILOR_SYSTEM_INSTRUCTION` RULE 2) |
 | Keyword coverage  | Fraction of fixture `hardSkills` substring-matched in tailored text |
 
 ### Metrics requiring manual review
@@ -50,7 +50,7 @@ Written to `docs/evals/<UTC-date>/`:
 
 Per the issue, the recommended weighting is:
 
-```
+```text
 score = 0.50 * truthfulness
       + 0.25 * keyword_coverage
       + 0.15 * length_compliance

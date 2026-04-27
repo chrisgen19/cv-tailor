@@ -4,8 +4,9 @@ import { TailoredCvResponseSchema, TailoredCvSchema } from "@/lib/cv-schema";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 const DEFAULT_MODEL = "gemini-3.1-pro-preview";
-function getModel(): string {
-	return process.env.GEMINI_MODEL || DEFAULT_MODEL;
+export function getModel(): string {
+	const override = process.env.GEMINI_MODEL?.trim();
+	return override ? override : DEFAULT_MODEL;
 }
 const MAX_RETRIES = 2;
 
@@ -310,6 +311,7 @@ ${formatMatchAnalysis(matchAnalysis)}`;
 export interface MasterCvCacheResult {
 	name: string;
 	expiresAt: Date;
+	model: string;
 }
 
 /**
@@ -334,9 +336,10 @@ export async function createCachedMasterCv(
 ): Promise<MasterCvCacheResult | null> {
 	const boundedCv =
 		rawText.length > MAX_TAILOR_CV_CHARS ? rawText.slice(0, MAX_TAILOR_CV_CHARS) : rawText;
+	const model = getModel();
 	try {
 		const cache = await ai.caches.create({
-			model: getModel(),
+			model,
 			config: {
 				contents: [
 					{ role: "user", parts: [{ text: `ORIGINAL CV:\n${boundedCv}` }] },
@@ -347,7 +350,7 @@ export async function createCachedMasterCv(
 			},
 		});
 		if (!cache.name) return null;
-		return { name: cache.name, expiresAt: parseExpireTime(cache.expireTime) };
+		return { name: cache.name, expiresAt: parseExpireTime(cache.expireTime), model };
 	} catch (err) {
 		console.warn(
 			`[tailor] master CV cache create failed (id=${masterCvId}): ${err instanceof Error ? err.message : String(err)}`,
