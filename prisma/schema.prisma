@@ -101,6 +101,15 @@ model JobApplication {
   status             ApplicationStatus @default(DRAFT)
   notes              String?           @db.Text
   appliedAt          DateTime?
+  salaryMin          Int?
+  salaryMax          Int?
+  salaryCurrency     String?
+  workSetup          WorkSetup?
+  locationAddress    String?
+  companyWebsite     String?
+  contactName        String?
+  contactEmail       String?
+  contactPhone       String?
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
 
@@ -118,4 +127,10 @@ enum ApplicationStatus {
   REJECTED
   INTERVIEW
   OFFER
+}
+
+enum WorkSetup {
+  REMOTE
+  HYBRID
+  ONSITE
 }

@@ -19,26 +19,66 @@ export const cvUploadSchema = z.object({
 
 // ─── Applications ─────────────────────────────────────────────────────
 
-export const createApplicationSchema = z.object({
-	title: z.string().min(1, "Job title is required"),
-	company: z.string().min(1, "Company name is required"),
-	sourceUrl: z.string().url().optional().or(z.literal("")),
-	rawDescription: z.string().min(10, "Job description is required"),
-	notes: z.string().optional(),
-});
+const workSetupEnum = z.enum(["REMOTE", "HYBRID", "ONSITE"]);
 
-export const updateApplicationSchema = z.object({
-	title: z.string().min(1).optional(),
-	company: z.string().min(1).optional(),
-	rawDescription: z.string().min(10).optional(),
-	status: z
-		.enum(["DRAFT", "ANALYZED", "TAILORED", "APPLIED", "REJECTED", "INTERVIEW", "OFFER"])
-		.optional(),
-	notes: z.string().optional(),
-	tailoredCVEdited: z.string().optional(),
-	coverLetter: z.string().optional(),
-	appliedAt: z.string().datetime().optional().nullable(),
-});
+const optionalUrl = z.string().url().optional().or(z.literal(""));
+const optionalEmail = z.string().email().optional().or(z.literal(""));
+
+const compensationFields = {
+	salaryMin: z.number().int().nonnegative().optional().nullable(),
+	salaryMax: z.number().int().nonnegative().optional().nullable(),
+	salaryCurrency: z.string().trim().min(2).max(8).optional().or(z.literal("")),
+	workSetup: workSetupEnum.optional().nullable(),
+	locationAddress: z.string().trim().max(500).optional(),
+	companyWebsite: optionalUrl,
+	contactName: z.string().trim().max(200).optional(),
+	contactEmail: optionalEmail,
+	contactPhone: z.string().trim().max(50).optional(),
+};
+
+const salaryRangeRefinement = (
+	data: { salaryMin?: number | null; salaryMax?: number | null },
+	ctx: z.RefinementCtx,
+) => {
+	if (
+		typeof data.salaryMin === "number" &&
+		typeof data.salaryMax === "number" &&
+		data.salaryMax < data.salaryMin
+	) {
+		ctx.addIssue({
+			code: z.ZodIssueCode.custom,
+			path: ["salaryMax"],
+			message: "Max salary must be greater than or equal to min salary",
+		});
+	}
+};
+
+export const createApplicationSchema = z
+	.object({
+		title: z.string().min(1, "Job title is required"),
+		company: z.string().min(1, "Company name is required"),
+		sourceUrl: optionalUrl,
+		rawDescription: z.string().min(10, "Job description is required"),
+		notes: z.string().optional(),
+		...compensationFields,
+	})
+	.superRefine(salaryRangeRefinement);
+
+export const updateApplicationSchema = z
+	.object({
+		title: z.string().min(1).optional(),
+		company: z.string().min(1).optional(),
+		rawDescription: z.string().min(10).optional(),
+		status: z
+			.enum(["DRAFT", "ANALYZED", "TAILORED", "APPLIED", "REJECTED", "INTERVIEW", "OFFER"])
+			.optional(),
+		notes: z.string().optional(),
+		tailoredCVEdited: z.string().optional(),
+		coverLetter: z.string().optional(),
+		appliedAt: z.string().datetime().optional().nullable(),
+		...compensationFields,
+	})
+	.superRefine(salaryRangeRefinement);
 
 export const bulkStatusUpdateSchema = z.object({
 	ids: z.array(z.string().min(1)).min(1),

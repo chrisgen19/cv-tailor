@@ -59,14 +59,24 @@ export async function POST(request: Request) {
 		);
 	}
 
+	const d = parsed.data;
 	const application = await prisma.jobApplication.create({
 		data: {
 			userId: session.user.id,
-			title: parsed.data.title,
-			company: parsed.data.company,
-			sourceUrl: parsed.data.sourceUrl || null,
-			rawDescription: parsed.data.rawDescription,
-			notes: parsed.data.notes || null,
+			title: d.title,
+			company: d.company,
+			sourceUrl: d.sourceUrl || null,
+			rawDescription: d.rawDescription,
+			notes: d.notes || null,
+			salaryMin: d.salaryMin ?? null,
+			salaryMax: d.salaryMax ?? null,
+			salaryCurrency: d.salaryCurrency || null,
+			workSetup: d.workSetup ?? null,
+			locationAddress: d.locationAddress || null,
+			companyWebsite: d.companyWebsite || null,
+			contactName: d.contactName || null,
+			contactEmail: d.contactEmail || null,
+			contactPhone: d.contactPhone || null,
 		},
 	});
 

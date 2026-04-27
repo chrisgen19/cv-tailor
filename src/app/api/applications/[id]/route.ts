@@ -22,10 +22,7 @@ async function getApplication(userId: string, id: string) {
  */
 export function resolveEditedTailoredCvJson(
 	edited: string | undefined,
-):
-	| { kind: "leave" }
-	| { kind: "clear" }
-	| { kind: "set"; value: Prisma.InputJsonValue } {
+): { kind: "leave" } | { kind: "clear" } | { kind: "set"; value: Prisma.InputJsonValue } {
 	if (edited === undefined) return { kind: "leave" };
 	if (!edited.trim()) return { kind: "clear" };
 	try {
@@ -94,6 +91,16 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 	}
 
 	const data: Prisma.JobApplicationUpdateInput = { ...parsed.data };
+	for (const key of [
+		"salaryCurrency",
+		"locationAddress",
+		"companyWebsite",
+		"contactName",
+		"contactEmail",
+		"contactPhone",
+	] as const) {
+		if (data[key] === "") data[key] = null;
+	}
 	const decision = resolveEditedTailoredCvJson(parsed.data.tailoredCVEdited);
 	if (decision.kind === "set") data.tailoredCvJson = decision.value;
 	else if (decision.kind === "clear") data.tailoredCvJson = Prisma.JsonNull;
@@ -106,10 +113,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 	return NextResponse.json(updated);
 }
 
-export async function DELETE(
-	_request: Request,
-	{ params }: { params: Promise<{ id: string }> },
-) {
+export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
 	const session = await auth.api.getSession({ headers: await headers() });
 	if (!session) {
 		return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

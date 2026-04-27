@@ -1,6 +1,5 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import {
 	ArrowLeft,
@@ -20,9 +19,9 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import type { JobApplication } from "@/generated/prisma/client";
-import type { MatchAnalysis, ParsedRequirements } from "@/lib/gemini";
-import { cn } from "@/lib/utils";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
+import { JobDetailsPanel } from "@/components/applications/job-details-panel";
 import { MatchScoreRing } from "@/components/applications/match-score-ring";
 import { StatusBadge } from "@/components/applications/status-badge";
 import { TiptapEditor } from "@/components/editor/tiptap-editor";
@@ -38,7 +37,9 @@ import {
 	DialogTitle,
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { toast } from "sonner";
+import type { JobApplication } from "@/generated/prisma/client";
+import type { MatchAnalysis, ParsedRequirements } from "@/lib/gemini";
+import { cn } from "@/lib/utils";
 
 export default function ApplicationDetailPage() {
 	const { id } = useParams<{ id: string }>();
@@ -60,7 +61,9 @@ export default function ApplicationDetailPage() {
 	const [savedCL, setSavedCL] = useState(false);
 
 	// Regenerate confirmation
-	const [confirmRegenerate, setConfirmRegenerate] = useState<"tailor" | "cover-letter" | null>(null);
+	const [confirmRegenerate, setConfirmRegenerate] = useState<"tailor" | "cover-letter" | null>(
+		null,
+	);
 
 	const fetchApplication = useCallback(async () => {
 		try {
@@ -266,11 +269,7 @@ export default function ApplicationDetailPage() {
 					</div>
 				</div>
 				<div className="flex gap-2">
-					<Button
-						variant="outline"
-						size="sm"
-						render={<Link href={`/applications/${id}/edit`} />}
-					>
+					<Button variant="outline" size="sm" render={<Link href={`/applications/${id}/edit`} />}>
 						<Pencil className="mr-1.5 h-3.5 w-3.5" />
 						Edit
 					</Button>
@@ -313,6 +312,8 @@ export default function ApplicationDetailPage() {
 
 				{/* ─── Job Description Tab ─────────────────────────────────── */}
 				<TabsContent value="description" className="mt-4 space-y-4">
+					<JobDetailsPanel application={application} />
+
 					<Card>
 						<CardHeader>
 							<CardTitle>Job Description</CardTitle>
@@ -544,19 +545,11 @@ export default function ApplicationDetailPage() {
 										<Clipboard className="mr-1.5 h-3.5 w-3.5" />
 										Copy
 									</Button>
-									<Button
-										variant="outline"
-										size="sm"
-										onClick={() => downloadExport("cv", "docx")}
-									>
+									<Button variant="outline" size="sm" onClick={() => downloadExport("cv", "docx")}>
 										<Download className="mr-1.5 h-3.5 w-3.5" />
 										DOCX
 									</Button>
-									<Button
-										variant="outline"
-										size="sm"
-										onClick={() => downloadExport("cv", "pdf")}
-									>
+									<Button variant="outline" size="sm" onClick={() => downloadExport("cv", "pdf")}>
 										<Download className="mr-1.5 h-3.5 w-3.5" />
 										PDF
 									</Button>
@@ -593,10 +586,7 @@ export default function ApplicationDetailPage() {
 										? "Generate an AI-tailored version of your CV optimized for this job."
 										: "Run match analysis first, then generate a tailored CV."}
 								</p>
-								<Button
-									onClick={handleTailor}
-									disabled={tailoring || !matchAnalysis}
-								>
+								<Button onClick={handleTailor} disabled={tailoring || !matchAnalysis}>
 									{tailoring ? (
 										<Loader2 className="mr-2 h-4 w-4 animate-spin" />
 									) : (
@@ -697,7 +687,10 @@ export default function ApplicationDetailPage() {
 			</Dialog>
 
 			{/* Regenerate Confirmation Dialog */}
-			<Dialog open={!!confirmRegenerate} onOpenChange={(open) => !open && setConfirmRegenerate(null)}>
+			<Dialog
+				open={!!confirmRegenerate}
+				onOpenChange={(open) => !open && setConfirmRegenerate(null)}
+			>
 				<DialogContent>
 					<DialogHeader>
 						<DialogTitle>Regenerate Content</DialogTitle>

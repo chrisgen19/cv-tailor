@@ -1,17 +1,30 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import type { ApplicationStatus } from "@/generated/prisma/enums";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
+import {
+	CompensationFields,
+	type CompensationValue,
+	compensationFromApplication,
+	compensationToPayload,
+	EMPTY_COMPENSATION,
+} from "@/components/applications/compensation-fields";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { toast } from "sonner";
+import type { ApplicationStatus } from "@/generated/prisma/enums";
 
 const STATUSES: { value: ApplicationStatus; label: string }[] = [
 	{ value: "DRAFT", label: "Draft" },
@@ -35,6 +48,7 @@ export default function EditApplicationPage() {
 	const [rawDescription, setRawDescription] = useState("");
 	const [status, setStatus] = useState<ApplicationStatus>("DRAFT");
 	const [notes, setNotes] = useState("");
+	const [compensation, setCompensation] = useState<CompensationValue>(EMPTY_COMPENSATION);
 
 	useEffect(() => {
 		async function load() {
@@ -47,6 +61,7 @@ export default function EditApplicationPage() {
 				setRawDescription(app.rawDescription);
 				setStatus(app.status);
 				setNotes(app.notes ?? "");
+				setCompensation(compensationFromApplication(app));
 			} catch {
 				toast.error("Failed to load application");
 				router.push("/applications");
@@ -63,6 +78,16 @@ export default function EditApplicationPage() {
 			return;
 		}
 
+		const compPayload = compensationToPayload(compensation);
+		if (
+			compPayload.salaryMin != null &&
+			compPayload.salaryMax != null &&
+			compPayload.salaryMax < compPayload.salaryMin
+		) {
+			toast.error("Max salary must be greater than or equal to min salary");
+			return;
+		}
+
 		setSubmitting(true);
 		try {
 			const res = await fetch(`/api/applications/${id}`, {
@@ -74,6 +99,7 @@ export default function EditApplicationPage() {
 					rawDescription: rawDescription.trim(),
 					status,
 					notes: notes.trim() || undefined,
+					...compPayload,
 				}),
 			});
 			if (!res.ok) {
@@ -117,19 +143,11 @@ export default function EditApplicationPage() {
 					<div className="grid gap-4 sm:grid-cols-2">
 						<div className="space-y-2">
 							<Label htmlFor="title">Job Title</Label>
-							<Input
-								id="title"
-								value={title}
-								onChange={(e) => setTitle(e.target.value)}
-							/>
+							<Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} />
 						</div>
 						<div className="space-y-2">
 							<Label htmlFor="company">Company</Label>
-							<Input
-								id="company"
-								value={company}
-								onChange={(e) => setCompany(e.target.value)}
-							/>
+							<Input id="company" value={company} onChange={(e) => setCompany(e.target.value)} />
 						</div>
 					</div>
 					<div className="space-y-2">
@@ -167,6 +185,8 @@ export default function EditApplicationPage() {
 					</div>
 				</CardContent>
 			</Card>
+
+			<CompensationFields value={compensation} onChange={setCompensation} />
 
 			<div className="flex justify-end gap-3">
 				<Button variant="outline" render={<Link href={`/applications/${id}`} />}>

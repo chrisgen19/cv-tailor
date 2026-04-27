@@ -1,16 +1,22 @@
 "use client";
 
-import { useState } from "react";
 import { ArrowLeft, Globe, Loader2, Type } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { toast } from "sonner";
+import {
+	CompensationFields,
+	type CompensationValue,
+	compensationToPayload,
+	EMPTY_COMPENSATION,
+} from "@/components/applications/compensation-fields";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { toast } from "sonner";
 
 export default function NewApplicationPage() {
 	const router = useRouter();
@@ -22,6 +28,7 @@ export default function NewApplicationPage() {
 	const [rawDescription, setRawDescription] = useState("");
 	const [sourceUrl, setSourceUrl] = useState("");
 	const [notes, setNotes] = useState("");
+	const [compensation, setCompensation] = useState<CompensationValue>(EMPTY_COMPENSATION);
 
 	// Scrape state
 	const [scrapeUrl, setScrapeUrl] = useState("");
@@ -62,6 +69,16 @@ export default function NewApplicationPage() {
 			return;
 		}
 
+		const compPayload = compensationToPayload(compensation);
+		if (
+			compPayload.salaryMin != null &&
+			compPayload.salaryMax != null &&
+			compPayload.salaryMax < compPayload.salaryMin
+		) {
+			toast.error("Max salary must be greater than or equal to min salary");
+			return;
+		}
+
 		setSubmitting(true);
 		try {
 			const res = await fetch("/api/applications", {
@@ -73,6 +90,7 @@ export default function NewApplicationPage() {
 					rawDescription: rawDescription.trim(),
 					sourceUrl: sourceUrl.trim() || undefined,
 					notes: notes.trim() || undefined,
+					...compPayload,
 				}),
 			});
 			if (!res.ok) {
@@ -214,6 +232,8 @@ export default function NewApplicationPage() {
 					</div>
 				</CardContent>
 			</Card>
+
+			<CompensationFields value={compensation} onChange={setCompensation} />
 
 			<div className="flex justify-end gap-3">
 				<Button variant="outline" render={<Link href="/applications" />}>
