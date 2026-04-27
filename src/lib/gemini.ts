@@ -315,6 +315,16 @@ export interface MasterCvCacheResult {
  * transient SDK error). Callers should treat null as "no cache available" and
  * fall back to inline CV in the user prompt.
  */
+function fallbackExpiry(): Date {
+	return new Date(Date.now() + MASTER_CV_CACHE_TTL_SECONDS * 1000);
+}
+
+function parseExpireTime(expireTime: string | undefined): Date {
+	if (!expireTime) return fallbackExpiry();
+	const parsed = new Date(expireTime);
+	return Number.isNaN(parsed.getTime()) ? fallbackExpiry() : parsed;
+}
+
 export async function createCachedMasterCv(
 	masterCvId: string,
 	rawText: string,
@@ -334,10 +344,7 @@ export async function createCachedMasterCv(
 			},
 		});
 		if (!cache.name) return null;
-		return {
-			name: cache.name,
-			expiresAt: new Date(Date.now() + MASTER_CV_CACHE_TTL_SECONDS * 1000),
-		};
+		return { name: cache.name, expiresAt: parseExpireTime(cache.expireTime) };
 	} catch (err) {
 		console.warn(
 			`[tailor] master CV cache create failed (id=${masterCvId}): ${err instanceof Error ? err.message : String(err)}`,
@@ -348,11 +355,11 @@ export async function createCachedMasterCv(
 
 export async function extendCachedMasterCv(name: string): Promise<Date | null> {
 	try {
-		await ai.caches.update({
+		const updated = await ai.caches.update({
 			name,
 			config: { ttl: `${MASTER_CV_CACHE_TTL_SECONDS}s` },
 		});
-		return new Date(Date.now() + MASTER_CV_CACHE_TTL_SECONDS * 1000);
+		return parseExpireTime(updated.expireTime);
 	} catch (err) {
 		console.warn(
 			`[tailor] master CV cache extend failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -361,6 +368,10 @@ export async function extendCachedMasterCv(name: string): Promise<Date | null> {
 	}
 }
 
+/**
+ * Best-effort delete (logs and swallows). Use for replacement flows where the
+ * old cache becomes a no-op leaked resource — Gemini will TTL it anyway.
+ */
 export async function deleteCachedMasterCv(name: string): Promise<void> {
 	try {
 		await ai.caches.delete({ name });
@@ -368,6 +379,18 @@ export async function deleteCachedMasterCv(name: string): Promise<void> {
 		console.warn(
 			`[tailor] master CV cache delete failed: ${err instanceof Error ? err.message : String(err)}`,
 		);
+	}
+}
+
+/** Strict variant: rejects on failure unless cache is already gone (404 / not found). */
+export async function deleteCachedMasterCvStrict(name: string): Promise<void> {
+	try {
+		await ai.caches.delete({ name });
+	} catch (err) {
+		const message = err instanceof Error ? err.message : String(err);
+		// Treat "already gone" as success — the desired end state is achieved.
+		if (/not found|404/i.test(message)) return;
+		throw err;
 	}
 }
 
@@ -408,14 +431,20 @@ interface TailorOnceInput {
 	cachedContent?: string;
 }
 
-async function tailorDraft(
-	input: TailorOnceInput,
-): Promise<{ cv: TailoredCv; usage: UsageInfo }> {
+/** Errors from Gemini that mean the cachedContent ref is gone server-side. */
+export function isStaleCacheError(err: unknown): boolean {
+	const message = err instanceof Error ? err.message : String(err);
+	return /cached.?content.*not.?found|cached.?content.*expired|cached.?content.*invalid|404/i.test(
+		message,
+	);
+}
+
+async function generateDraft(input: TailorOnceInput) {
 	const userText = input.cachedContent
 		? buildTailorUserPromptCached(input.jobDescription, input.matchAnalysis)
 		: buildTailorUserPrompt(input.cvText, input.jobDescription, input.matchAnalysis);
 
-	const response = await ai.models.generateContent({
+	return ai.models.generateContent({
 		model: MODEL,
 		contents: [{ role: "user", parts: [{ text: userText }] }],
 		config: {
@@ -426,12 +455,33 @@ async function tailorDraft(
 			responseSchema: TailoredCvResponseSchema,
 		},
 	});
+}
+
+async function tailorDraft(
+	input: TailorOnceInput,
+): Promise<{ cv: TailoredCv; usage: UsageInfo; cacheWasStale: boolean }> {
+	let response: Awaited<ReturnType<typeof generateDraft>>;
+	let cacheWasStale = false;
+	try {
+		response = await generateDraft(input);
+	} catch (err) {
+		if (input.cachedContent && isStaleCacheError(err)) {
+			console.warn(
+				`[tailor] cached content ${input.cachedContent} is stale — retrying with inline CV`,
+			);
+			cacheWasStale = true;
+			response = await generateDraft({ ...input, cachedContent: undefined });
+		} else {
+			throw err;
+		}
+	}
 
 	const text = response.text;
 	if (!text) throw new Error("Empty response from Gemini");
 	return {
 		cv: TailoredCvSchema.parse(JSON.parse(text)),
 		usage: readUsage(response.usageMetadata),
+		cacheWasStale,
 	};
 }
 
@@ -500,17 +550,32 @@ export interface TailorCvInput {
 	skipCritique?: boolean;
 }
 
+export interface TailorCvResult {
+	cv: TailoredCv;
+	/** True when the supplied cachedContent ref was stale and the call fell back to inline CV. */
+	cacheWasStale: boolean;
+}
+
 export async function tailorCV(input: TailorCvInput): Promise<TailoredCv> {
+	const result = await tailorCVWithMeta(input);
+	return result.cv;
+}
+
+/** Same as tailorCV but exposes whether the cache had to be invalidated, so callers can update DB metadata. */
+export async function tailorCVWithMeta(input: TailorCvInput): Promise<TailorCvResult> {
 	return withRetry(async () => {
 		const draft = await tailorDraft(input);
 		logUsage("draft", draft.usage);
 
 		const skipCritique = input.skipCritique ?? process.env.TAILOR_SKIP_CRITIQUE === "1";
-		if (skipCritique) return draft.cv;
+		if (skipCritique) return { cv: draft.cv, cacheWasStale: draft.cacheWasStale };
 
+		// NOTE: critique always inlines ORIGINAL CV. Reusing the draft cache would
+		// require the cache to omit systemInstruction (since critique uses a
+		// different one). Tracked for future optimization.
 		const revised = await critiqueTailoredCv(input.cvText, input.jobDescription, draft.cv);
 		logUsage("critique", revised.usage);
-		return revised.cv;
+		return { cv: revised.cv, cacheWasStale: draft.cacheWasStale };
 	});
 }
 

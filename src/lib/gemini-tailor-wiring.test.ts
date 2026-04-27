@@ -139,8 +139,12 @@ describe("tailorCV wiring", () => {
 });
 
 describe("master CV cache lifecycle", () => {
-	it("createCachedMasterCv returns name + expiry on success", async () => {
-		cachesCreate.mockResolvedValue({ name: "cachedContents/xyz" });
+	it("createCachedMasterCv returns name + server expireTime on success", async () => {
+		const serverExpiry = "2030-01-02T03:04:05Z";
+		cachesCreate.mockResolvedValue({
+			name: "cachedContents/xyz",
+			expireTime: serverExpiry,
+		});
 		const { createCachedMasterCv } = await import("@/lib/gemini");
 
 		const result = await createCachedMasterCv("master-1", "raw text".repeat(100));
@@ -150,7 +154,19 @@ describe("master CV cache lifecycle", () => {
 		expect(params.config.ttl).toMatch(/^\d+s$/);
 		expect(params.config.systemInstruction).toBeDefined();
 		expect(result?.name).toBe("cachedContents/xyz");
-		expect(result?.expiresAt).toBeInstanceOf(Date);
+		expect(result?.expiresAt.toISOString()).toBe(new Date(serverExpiry).toISOString());
+	});
+
+	it("createCachedMasterCv falls back to TTL-based expiry when server omits expireTime", async () => {
+		cachesCreate.mockResolvedValue({ name: "cachedContents/xyz" });
+		const { createCachedMasterCv } = await import("@/lib/gemini");
+
+		const before = Date.now();
+		const result = await createCachedMasterCv("master-1", "raw");
+		const after = Date.now();
+
+		expect(result?.expiresAt.getTime()).toBeGreaterThanOrEqual(before);
+		expect(result?.expiresAt.getTime()).toBeLessThanOrEqual(after + 3600 * 1000 + 50);
 	});
 
 	it("createCachedMasterCv returns null on SDK failure (graceful fallback)", async () => {
@@ -163,6 +179,30 @@ describe("master CV cache lifecycle", () => {
 		expect(result).toBeNull();
 	});
 
+	it("extendCachedMasterCv returns server expireTime on success", async () => {
+		const serverExpiry = "2030-06-01T00:00:00Z";
+		cachesUpdate.mockResolvedValue({ expireTime: serverExpiry });
+		const { extendCachedMasterCv } = await import("@/lib/gemini");
+
+		const result = await extendCachedMasterCv("cachedContents/xyz");
+
+		expect(cachesUpdate).toHaveBeenCalledWith({
+			name: "cachedContents/xyz",
+			config: { ttl: expect.stringMatching(/^\d+s$/) },
+		});
+		expect(result?.toISOString()).toBe(new Date(serverExpiry).toISOString());
+	});
+
+	it("extendCachedMasterCv returns null on SDK failure", async () => {
+		cachesUpdate.mockRejectedValue(new Error("not found"));
+		const { extendCachedMasterCv } = await import("@/lib/gemini");
+		vi.spyOn(console, "warn").mockImplementation(() => {});
+
+		const result = await extendCachedMasterCv("cachedContents/xyz");
+
+		expect(result).toBeNull();
+	});
+
 	it("deleteCachedMasterCv calls SDK delete and swallows errors", async () => {
 		cachesDelete.mockResolvedValue({});
 		const { deleteCachedMasterCv } = await import("@/lib/gemini");
@@ -170,5 +210,69 @@ describe("master CV cache lifecycle", () => {
 		await deleteCachedMasterCv("cachedContents/xyz");
 
 		expect(cachesDelete).toHaveBeenCalledWith({ name: "cachedContents/xyz" });
+	});
+
+	it("deleteCachedMasterCvStrict throws on real failures", async () => {
+		cachesDelete.mockRejectedValue(new Error("network down"));
+		const { deleteCachedMasterCvStrict } = await import("@/lib/gemini");
+
+		await expect(deleteCachedMasterCvStrict("cachedContents/xyz")).rejects.toThrow(
+			/network down/,
+		);
+	});
+
+	it("deleteCachedMasterCvStrict treats not-found as success", async () => {
+		cachesDelete.mockRejectedValue(new Error("HTTP 404 not found"));
+		const { deleteCachedMasterCvStrict } = await import("@/lib/gemini");
+
+		await expect(
+			deleteCachedMasterCvStrict("cachedContents/xyz"),
+		).resolves.toBeUndefined();
+	});
+});
+
+describe("stale cachedContent fallback", () => {
+	it("retries with inline CV when cached content is reported missing", async () => {
+		const draft = { ...validTailoredCv, summary: "Inline draft" };
+		generateContent
+			.mockRejectedValueOnce(new Error("CachedContent not found: cachedContents/old"))
+			.mockResolvedValueOnce({ text: JSON.stringify(draft) });
+		vi.spyOn(console, "warn").mockImplementation(() => {});
+
+		const { tailorCVWithMeta } = await import("@/lib/gemini");
+
+		const result = await tailorCVWithMeta({
+			cvText: "FULL CV BODY",
+			jobDescription: "JD",
+			matchAnalysis: emptyMatch,
+			cachedContent: "cachedContents/old",
+			skipCritique: true,
+		});
+
+		expect(generateContent).toHaveBeenCalledTimes(2);
+		const firstCall = generateContent.mock.calls[0][0];
+		const secondCall = generateContent.mock.calls[1][0];
+		expect(firstCall.config.cachedContent).toBe("cachedContents/old");
+		expect(secondCall.config.cachedContent).toBeUndefined();
+		expect(secondCall.config.systemInstruction).toBeDefined();
+		expect(secondCall.contents[0].parts[0].text).toContain("ORIGINAL CV:\nFULL CV BODY");
+		expect(result.cv.summary).toBe("Inline draft");
+		expect(result.cacheWasStale).toBe(true);
+	});
+
+	it("does not fall back when error is unrelated to cache", async () => {
+		generateContent.mockRejectedValue(new Error("rate limit exceeded"));
+
+		const { tailorCVWithMeta } = await import("@/lib/gemini");
+
+		await expect(
+			tailorCVWithMeta({
+				cvText: "CV",
+				jobDescription: "JD",
+				matchAnalysis: emptyMatch,
+				cachedContent: "cachedContents/old",
+				skipCritique: true,
+			}),
+		).rejects.toThrow(/rate limit/);
 	});
 });

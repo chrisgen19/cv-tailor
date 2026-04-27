@@ -4,7 +4,7 @@ import type { MatchAnalysis } from "@/lib/gemini";
 import {
 	createCachedMasterCv,
 	extendCachedMasterCv,
-	tailorCV,
+	tailorCVWithMeta,
 } from "@/lib/gemini";
 import { auth } from "@/lib/auth";
 import { jsonToMarkdown } from "@/lib/cv-serializer";
@@ -87,12 +87,18 @@ export async function POST(
 
 	try {
 		const cachedContent = await ensureMasterCvCache(masterCV);
-		const tailoredJson = await tailorCV({
+		const { cv: tailoredJson, cacheWasStale } = await tailorCVWithMeta({
 			cvText: masterCV.rawText,
 			jobDescription: application.rawDescription,
 			matchAnalysis: application.matchAnalysis as unknown as MatchAnalysis,
 			cachedContent,
 		});
+		if (cacheWasStale) {
+			await prisma.masterCV.update({
+				where: { id: masterCV.id },
+				data: { geminiCacheName: null, geminiCacheExpiresAt: null },
+			});
+		}
 		const tailoredMarkdown = jsonToMarkdown(tailoredJson);
 
 		const updated = await prisma.jobApplication.update({
