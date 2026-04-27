@@ -206,8 +206,8 @@ export default function ApplicationDetailPage() {
 
 	// ─── Download Export ─────────────────────────────────────────────
 
-	const downloadExport = (type: "cv" | "cover-letter") => {
-		const url = `/api/applications/${id}/export?type=${type}&format=docx`;
+	const downloadExport = (type: "cv" | "cover-letter", format: "docx" | "pdf" = "docx") => {
+		const url = `/api/applications/${id}/export?type=${type}&format=${format}`;
 		const link = document.createElement("a");
 		link.href = url;
 		link.download = "";
@@ -547,10 +547,18 @@ export default function ApplicationDetailPage() {
 									<Button
 										variant="outline"
 										size="sm"
-										onClick={() => downloadExport("cv")}
+										onClick={() => downloadExport("cv", "docx")}
 									>
 										<Download className="mr-1.5 h-3.5 w-3.5" />
 										DOCX
+									</Button>
+									<Button
+										variant="outline"
+										size="sm"
+										onClick={() => downloadExport("cv", "pdf")}
+									>
+										<Download className="mr-1.5 h-3.5 w-3.5" />
+										PDF
 									</Button>
 									<Button
 										variant="outline"

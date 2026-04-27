@@ -45,6 +45,29 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 		isCoverLetter ? "cover-letter" : "tailored-cv"
 	}`;
 
+	if (format === "pdf") {
+		if (isCoverLetter) {
+			return NextResponse.json(
+				{ error: "PDF export is only supported for the tailored CV" },
+				{ status: 400 },
+			);
+		}
+		if (!cv) {
+			return NextResponse.json(
+				{ error: "Tailored CV JSON not available; cannot render PDF" },
+				{ status: 400 },
+			);
+		}
+		const { generateCvPdf } = await import("@/lib/pdf-export");
+		const pdfBuffer = await generateCvPdf(cv, `${application.title} - Tailored CV`);
+		return new NextResponse(new Uint8Array(pdfBuffer), {
+			headers: {
+				"Content-Type": "application/pdf",
+				"Content-Disposition": `attachment; filename="${baseName}.pdf"`,
+			},
+		});
+	}
+
 	if (format === "docx") {
 		let buffer: Buffer;
 		if (isCoverLetter) {
