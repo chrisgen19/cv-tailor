@@ -1,5 +1,51 @@
 import { describe, expect, it } from "vitest";
-import { resolveEditedTailoredCvJson } from "./route";
+import { normalizeEmptyStringsToNull, resolveEditedTailoredCvJson } from "./route";
+
+describe("normalizeEmptyStringsToNull", () => {
+	it("rewrites empty strings to null for the listed nullable text fields", () => {
+		const result = normalizeEmptyStringsToNull({
+			salaryCurrency: "",
+			locationAddress: "",
+			companyWebsite: "",
+			contactName: "",
+			contactEmail: "",
+			contactPhone: "",
+		});
+		expect(result).toEqual({
+			salaryCurrency: null,
+			locationAddress: null,
+			companyWebsite: null,
+			contactName: null,
+			contactEmail: null,
+			contactPhone: null,
+		});
+	});
+
+	it("preserves non-empty strings", () => {
+		const result = normalizeEmptyStringsToNull({
+			contactEmail: "jane@example.com",
+			contactName: "Jane",
+		});
+		expect(result.contactEmail).toBe("jane@example.com");
+		expect(result.contactName).toBe("Jane");
+	});
+
+	it("leaves explicit null values alone", () => {
+		const result = normalizeEmptyStringsToNull({ companyWebsite: null });
+		expect(result.companyWebsite).toBeNull();
+	});
+
+	it("does not touch fields outside the nullable text list", () => {
+		const input = { contactName: "Jane", title: "" } as unknown as {
+			salaryCurrency?: string | null;
+			contactName?: string | null;
+		};
+		const result = normalizeEmptyStringsToNull(input);
+		// title is an empty string but is not in NULLABLE_TEXT_FIELDS, so it stays.
+		expect((result as unknown as { title: string }).title).toBe("");
+		expect(result.contactName).toBe("Jane");
+	});
+});
 
 describe("resolveEditedTailoredCvJson", () => {
 	it("leaves JSON untouched when tailoredCVEdited is absent from the patch", () => {

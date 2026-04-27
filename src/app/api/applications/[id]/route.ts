@@ -22,10 +22,7 @@ async function getApplication(userId: string, id: string) {
  */
 export function resolveEditedTailoredCvJson(
 	edited: string | undefined,
-):
-	| { kind: "leave" }
-	| { kind: "clear" }
-	| { kind: "set"; value: Prisma.InputJsonValue } {
+): { kind: "leave" } | { kind: "clear" } | { kind: "set"; value: Prisma.InputJsonValue } {
 	if (edited === undefined) return { kind: "leave" };
 	if (!edited.trim()) return { kind: "clear" };
 	try {
@@ -34,6 +31,29 @@ export function resolveEditedTailoredCvJson(
 	} catch {
 		return { kind: "clear" };
 	}
+}
+
+/**
+ * Optional text fields where an empty string from a cleared form input should
+ * become a real DB NULL instead of being persisted as "". Keeps queries and
+ * downstream display logic free of "" sentinels.
+ */
+const NULLABLE_TEXT_FIELDS = [
+	"salaryCurrency",
+	"locationAddress",
+	"companyWebsite",
+	"contactName",
+	"contactEmail",
+	"contactPhone",
+] as const;
+
+export function normalizeEmptyStringsToNull<
+	T extends Partial<Record<(typeof NULLABLE_TEXT_FIELDS)[number], unknown>>,
+>(data: T): T {
+	for (const key of NULLABLE_TEXT_FIELDS) {
+		if (data[key] === "") data[key] = null as T[(typeof NULLABLE_TEXT_FIELDS)[number]];
+	}
+	return data;
 }
 
 async function backfillTailoredCvJson(id: string, markdown: string) {
@@ -93,7 +113,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 		);
 	}
 
-	const data: Prisma.JobApplicationUpdateInput = { ...parsed.data };
+	const data: Prisma.JobApplicationUpdateInput = normalizeEmptyStringsToNull({
+		...parsed.data,
+	});
 	const decision = resolveEditedTailoredCvJson(parsed.data.tailoredCVEdited);
 	if (decision.kind === "set") data.tailoredCvJson = decision.value;
 	else if (decision.kind === "clear") data.tailoredCvJson = Prisma.JsonNull;
@@ -106,10 +128,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 	return NextResponse.json(updated);
 }
 
-export async function DELETE(
-	_request: Request,
-	{ params }: { params: Promise<{ id: string }> },
-) {
+export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
 	const session = await auth.api.getSession({ headers: await headers() });
 	if (!session) {
 		return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

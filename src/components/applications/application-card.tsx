@@ -1,9 +1,17 @@
 "use client";
 
 import { formatDistanceToNow } from "date-fns";
-import { Building2, Calendar, ExternalLink, MoreVertical, Pencil, Trash2 } from "lucide-react";
+import {
+	Banknote,
+	Briefcase,
+	Building2,
+	Calendar,
+	ExternalLink,
+	MoreVertical,
+	Pencil,
+	Trash2,
+} from "lucide-react";
 import Link from "next/link";
-import type { JobApplication } from "@/generated/prisma/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -12,6 +20,8 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import type { JobApplication } from "@/generated/prisma/client";
+import { WORK_SETUP_LABELS } from "./compensation-fields";
 import { StatusBadge } from "./status-badge";
 
 interface ApplicationCardProps {
@@ -21,7 +31,29 @@ interface ApplicationCardProps {
 	onDelete: (id: string) => void;
 }
 
-export function ApplicationCard({ application, selected, onSelect, onDelete }: ApplicationCardProps) {
+function compactSalary(min: number | null, max: number | null, currency: string | null) {
+	if (min == null && max == null) return null;
+	const prefix = currency?.trim() ? `${currency.trim()} ` : "";
+	// Math.floor so the compact label never overstates pay (e.g. 1501 → "1k", not "2k").
+	const fmt = (n: number) => (n >= 1000 ? `${Math.floor(n / 1000)}k` : String(n));
+	if (min != null && max != null) return `${prefix}${fmt(min)}–${fmt(max)}/mo`;
+	if (min != null) return `${prefix}${fmt(min)}+/mo`;
+	return `≤ ${prefix}${fmt(max!)}/mo`;
+}
+
+export function ApplicationCard({
+	application,
+	selected,
+	onSelect,
+	onDelete,
+}: ApplicationCardProps) {
+	const salary = compactSalary(
+		application.salaryMin,
+		application.salaryMax,
+		application.salaryCurrency,
+	);
+	const setupLabel = application.workSetup ? WORK_SETUP_LABELS[application.workSetup] : null;
+
 	return (
 		<Card size="sm" className="group relative transition-colors hover:ring-primary/30">
 			<CardHeader>
@@ -44,7 +76,7 @@ export function ApplicationCard({ application, selected, onSelect, onDelete }: A
 							</CardTitle>
 							<StatusBadge status={application.status} />
 						</div>
-						<div className="flex items-center gap-3 text-xs text-muted-foreground">
+						<div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
 							<span className="flex items-center gap-1">
 								<Building2 className="h-3 w-3" />
 								{application.company}
@@ -53,6 +85,18 @@ export function ApplicationCard({ application, selected, onSelect, onDelete }: A
 								<Calendar className="h-3 w-3" />
 								{formatDistanceToNow(new Date(application.createdAt), { addSuffix: true })}
 							</span>
+							{salary ? (
+								<span className="flex items-center gap-1">
+									<Banknote className="h-3 w-3" />
+									{salary}
+								</span>
+							) : null}
+							{setupLabel ? (
+								<span className="flex items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+									<Briefcase className="h-3 w-3" />
+									{setupLabel}
+								</span>
+							) : null}
 						</div>
 					</div>
 					<DropdownMenu>
@@ -66,7 +110,9 @@ export function ApplicationCard({ application, selected, onSelect, onDelete }: A
 							</DropdownMenuItem>
 							{application.sourceUrl && (
 								<DropdownMenuItem
-									onSelect={() => window.open(application.sourceUrl!, "_blank", "noopener,noreferrer")}
+									onSelect={() =>
+										window.open(application.sourceUrl!, "_blank", "noopener,noreferrer")
+									}
 								>
 									<ExternalLink className="mr-2 h-3.5 w-3.5" />
 									View posting
