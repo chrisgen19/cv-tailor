@@ -3,7 +3,10 @@ import type { TailoredCv } from "@/lib/cv-schema";
 import { TailoredCvResponseSchema, TailoredCvSchema } from "@/lib/cv-schema";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
-const MODEL = "gemini-3.1-pro-preview";
+const DEFAULT_MODEL = "gemini-3.1-pro-preview";
+function getModel(): string {
+	return process.env.GEMINI_MODEL || DEFAULT_MODEL;
+}
 const MAX_RETRIES = 2;
 
 async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
@@ -56,7 +59,7 @@ export interface ParsedCV {
 export async function parseCV(rawText: string): Promise<ParsedCV> {
 	return withRetry(async () => {
 		const response = await ai.models.generateContent({
-			model: MODEL,
+			model: getModel(),
 			contents: [
 				{
 					role: "user",
@@ -101,7 +104,7 @@ export interface JobMeta {
 export async function extractJobMeta(description: string): Promise<JobMeta> {
 	return withRetry(async () => {
 		const response = await ai.models.generateContent({
-			model: MODEL,
+			model: getModel(),
 			contents: [
 				{
 					role: "user",
@@ -142,7 +145,7 @@ export async function parseJobRequirements(
 ): Promise<ParsedRequirements> {
 	return withRetry(async () => {
 		const response = await ai.models.generateContent({
-			model: MODEL,
+			model: getModel(),
 			contents: [
 				{
 					role: "user",
@@ -197,7 +200,7 @@ export async function analyzeMatch(
 ): Promise<MatchAnalysis> {
 	return withRetry(async () => {
 		const response = await ai.models.generateContent({
-			model: MODEL,
+			model: getModel(),
 			contents: [
 				{
 					role: "user",
@@ -333,7 +336,7 @@ export async function createCachedMasterCv(
 		rawText.length > MAX_TAILOR_CV_CHARS ? rawText.slice(0, MAX_TAILOR_CV_CHARS) : rawText;
 	try {
 		const cache = await ai.caches.create({
-			model: MODEL,
+			model: getModel(),
 			config: {
 				contents: [
 					{ role: "user", parts: [{ text: `ORIGINAL CV:\n${boundedCv}` }] },
@@ -445,7 +448,7 @@ async function generateDraft(input: TailorOnceInput) {
 		: buildTailorUserPrompt(input.cvText, input.jobDescription, input.matchAnalysis);
 
 	return ai.models.generateContent({
-		model: MODEL,
+		model: getModel(),
 		contents: [{ role: "user", parts: [{ text: userText }] }],
 		config: {
 			...(input.cachedContent
@@ -519,7 +522,7 @@ async function critiqueTailoredCv(
 	draft: TailoredCv,
 ): Promise<{ cv: TailoredCv; usage: UsageInfo }> {
 	const response = await ai.models.generateContent({
-		model: MODEL,
+		model: getModel(),
 		contents: [
 			{
 				role: "user",
@@ -589,7 +592,7 @@ export async function generateCoverLetter(
 ): Promise<string> {
 	return withRetry(async () => {
 		const response = await ai.models.generateContent({
-			model: MODEL,
+			model: getModel(),
 			contents: [
 				{
 					role: "user",
