@@ -26,6 +26,18 @@ describe("TiptapEditor schema", () => {
 		editor.destroy();
 	});
 
+	it("does not register duplicate extensions", () => {
+		// StarterKit v3 already bundles Link and Underline — registering a
+		// second instance produces two extensions with the same name and
+		// implementation-defined resolution. Lock in single-registration so a
+		// future contributor doesn't accidentally re-add `Link` to the array.
+		const editor = new Editor({ extensions: editorExtensions, content: "" });
+		const names = editor.extensionManager.extensions.map((x) => x.name);
+		const dupes = names.filter((n, i) => names.indexOf(n) !== i);
+		editor.destroy();
+		expect(dupes).toEqual([]);
+	});
+
 	it("preserves markdown links across a load → getHTML → htmlToMarkdown round trip", () => {
 		const md = "Visit [Site](https://example.com) for details.";
 		const { html, markdown } = loadAndExport(markdownToHtml(md));
