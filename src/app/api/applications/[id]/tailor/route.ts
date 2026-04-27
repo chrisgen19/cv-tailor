@@ -25,11 +25,9 @@ async function ensureMasterCvCache(masterCv: {
 	const currentModel = getModel();
 
 	// Gemini context caches are bound to the model that created them. If the
-	// active GEMINI_MODEL has changed, the existing cache is unusable — delete
-	// (best-effort) and fall through to recreate.
+	// active model is unknown or different, delete best-effort and recreate.
 	if (
 		masterCv.geminiCacheName &&
-		masterCv.geminiCacheModel &&
 		masterCv.geminiCacheModel !== currentModel
 	) {
 		await deleteCachedMasterCv(masterCv.geminiCacheName);

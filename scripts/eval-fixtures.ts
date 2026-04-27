@@ -30,13 +30,13 @@ export const CV_FIXTURES: CvFixture[] = [
 	{
 		id: "cv-01-senior-fullstack",
 		role: "Senior Full-Stack Engineer (Node/React)",
-		yearsOfExperience: 9,
+		yearsOfExperience: 10,
 		text: `Maria Chen
 maria.chen@example.com | +1-555-0101 | San Francisco, CA
 linkedin.com/in/mariachen | github.com/mariachen
 
 SUMMARY
-Senior full-stack engineer with 9 years building consumer SaaS on Node.js, TypeScript, React, and PostgreSQL. Led platform migrations and shipped revenue-driving features used by 1M+ MAU.
+Senior full-stack engineer with 10 years building consumer SaaS on Node.js, TypeScript, React, and PostgreSQL. Led platform migrations and shipped revenue-driving features used by 1M+ MAU.
 
 EXPERIENCE
 Lumen Labs — Staff Engineer (2021–Present)
