@@ -233,7 +233,7 @@ export default function ApplicationDetailPage() {
 	const matchAnalysis = application.matchAnalysis as MatchAnalysis | null;
 
 	return (
-		<div className="mx-auto max-w-5xl space-y-6">
+		<div className="space-y-6">
 			{/* Header */}
 			<div className="flex items-start justify-between gap-4">
 				<div className="flex items-start gap-3">

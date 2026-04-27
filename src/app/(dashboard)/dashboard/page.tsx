@@ -76,12 +76,7 @@ export default function DashboardPage() {
 	if (!data) return null;
 
 	return (
-		<motion.div
-			className="mx-auto max-w-5xl space-y-6"
-			variants={containerVariants}
-			initial="hidden"
-			animate="show"
-		>
+		<motion.div className="space-y-6" variants={containerVariants} initial="hidden" animate="show">
 			<motion.div variants={itemVariants}>
 				<h1 className="text-2xl font-semibold">Dashboard</h1>
 				<p className="text-sm text-muted-foreground">Overview of your job applications</p>
