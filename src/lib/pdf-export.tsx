@@ -271,8 +271,11 @@ function ExperienceEntry({ job, styles }: { job: TailoredCvExperience; styles: R
 	const dateRange = formatExperienceDateRange(job.start, job.end);
 	const meta = [job.location, dateRange].filter(Boolean).join(" • ");
 	return (
-		<View wrap={false}>
-			<View style={styles.entryHeader}>
+		// Outer wrap defaults to true so long bullet lists can paginate across
+		// pages; the inner header stays intact via wrap={false} and is pulled to
+		// the next page if there isn't room for it plus a first bullet (~36pt).
+		<View>
+			<View wrap={false} minPresenceAhead={36} style={styles.entryHeader}>
 				<View style={styles.entryHeaderLeft}>
 					<Text style={styles.entryTitle}>{job.company}</Text>
 					{job.role ? (
@@ -295,8 +298,8 @@ function ExperienceEntry({ job, styles }: { job: TailoredCvExperience; styles: R
 function EducationEntry({ edu, styles }: { edu: TailoredCvEducation; styles: ReturnType<typeof buildStyles> }) {
 	const dateRange = formatDateRange(edu.start, edu.end);
 	return (
-		<View wrap={false}>
-			<View style={styles.entryHeader}>
+		<View>
+			<View wrap={false} minPresenceAhead={24} style={styles.entryHeader}>
 				<View style={styles.entryHeaderLeft}>
 					<Text style={styles.entryTitle}>{edu.school}</Text>
 					{edu.degree ? <Text style={styles.entrySubtitle}>{` — ${edu.degree}`}</Text> : null}
@@ -314,8 +317,8 @@ function EducationEntry({ edu, styles }: { edu: TailoredCvEducation; styles: Ret
 
 function ProjectEntry({ project, styles }: { project: TailoredCvProject; styles: ReturnType<typeof buildStyles> }) {
 	return (
-		<View wrap={false}>
-			<View style={styles.entryHeader}>
+		<View>
+			<View wrap={false} minPresenceAhead={36} style={styles.entryHeader}>
 				<View style={styles.entryHeaderLeft}>
 					<Text style={styles.entryTitle}>{project.name}</Text>
 					{project.url ? (
@@ -444,6 +447,5 @@ export function CvDocument({ cv, title }: { cv: TailoredCv; title?: string }) {
 }
 
 export async function generateCvPdf(cv: TailoredCv, title?: string): Promise<Buffer> {
-	const buffer = await renderToBuffer(<CvDocument cv={cv} title={title} />);
-	return buffer as Buffer;
+	return renderToBuffer(<CvDocument cv={cv} title={title} />);
 }
