@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Underline from "@tiptap/extension-underline";
@@ -17,8 +17,18 @@ import {
 	Underline as UnderlineIcon,
 	Undo,
 } from "lucide-react";
+import { looksLikeHtml } from "@/lib/cv-serializer";
+import { markdownToHtml } from "@/lib/markdown-to-html";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+
+// Tiptap interprets `content` as HTML. Our pipeline stores tailored CVs and
+// cover letters as markdown, so convert markdown → HTML on load. Legacy rows
+// that already contain HTML pass through untouched.
+function normalizeIncoming(content: string): string {
+	if (!content) return "";
+	return looksLikeHtml(content) ? content : markdownToHtml(content);
+}
 
 interface TiptapEditorProps {
 	content: string;
@@ -31,6 +41,8 @@ export function TiptapEditor({ content, onUpdate, editable = true, className }: 
 	const onUpdateRef = useRef(onUpdate);
 	onUpdateRef.current = onUpdate;
 
+	const initialHtml = useMemo(() => normalizeIncoming(content), [content]);
+
 	const editor = useEditor({
 		extensions: [
 			StarterKit.configure({
@@ -38,7 +50,7 @@ export function TiptapEditor({ content, onUpdate, editable = true, className }: 
 			}),
 			Underline,
 		],
-		content,
+		content: initialHtml,
 		editable,
 		immediatelyRender: false,
 		onUpdate: ({ editor: e }) => {
@@ -56,7 +68,7 @@ export function TiptapEditor({ content, onUpdate, editable = true, className }: 
 	useEffect(() => {
 		if (editor && content !== prevContentRef.current) {
 			prevContentRef.current = content;
-			editor.commands.setContent(content);
+			editor.commands.setContent(normalizeIncoming(content));
 		}
 	}, [editor, content]);
 
