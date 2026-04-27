@@ -1,6 +1,6 @@
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
-import type { Prisma } from "@/generated/prisma/client";
+import { Prisma } from "@/generated/prisma/client";
 import { auth } from "@/lib/auth";
 import { markdownToJson } from "@/lib/cv-serializer";
 import { prisma } from "@/lib/prisma";
@@ -10,6 +10,30 @@ async function getApplication(userId: string, id: string) {
 	return prisma.jobApplication.findFirst({
 		where: { id, userId },
 	});
+}
+
+/**
+ * Decide what to write to tailoredCvJson when tailoredCVEdited changes.
+ * - undefined → field not in PATCH body, leave Prisma update untouched.
+ * - "" or whitespace → user cleared the editor, clear JSON too.
+ * - parses cleanly → use parsed JSON.
+ * - throws (e.g. HTML from Tiptap, see #15) → clear JSON so it's not stale
+ *   vs. the new edited markdown. Re-tailor will repopulate.
+ */
+export function resolveEditedTailoredCvJson(
+	edited: string | undefined,
+):
+	| { kind: "leave" }
+	| { kind: "clear" }
+	| { kind: "set"; value: Prisma.InputJsonValue } {
+	if (edited === undefined) return { kind: "leave" };
+	if (!edited.trim()) return { kind: "clear" };
+	try {
+		const parsed = markdownToJson(edited) as unknown as Prisma.InputJsonValue;
+		return { kind: "set", value: parsed };
+	} catch {
+		return { kind: "clear" };
+	}
 }
 
 async function backfillTailoredCvJson(id: string, markdown: string) {
@@ -70,15 +94,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 	}
 
 	const data: Prisma.JobApplicationUpdateInput = { ...parsed.data };
-	if (parsed.data.tailoredCVEdited) {
-		try {
-			data.tailoredCvJson = markdownToJson(
-				parsed.data.tailoredCVEdited,
-			) as unknown as Prisma.InputJsonValue;
-		} catch {
-			// keep markdown edit, leave JSON unchanged
-		}
-	}
+	const decision = resolveEditedTailoredCvJson(parsed.data.tailoredCVEdited);
+	if (decision.kind === "set") data.tailoredCvJson = decision.value;
+	else if (decision.kind === "clear") data.tailoredCvJson = Prisma.JsonNull;
 
 	const updated = await prisma.jobApplication.update({
 		where: { id },
