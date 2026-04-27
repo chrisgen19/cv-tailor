@@ -85,6 +85,49 @@ describe("createApplicationSchema — compensation", () => {
 		expect(result.success).toBe(false);
 	});
 
+	it("rejects javascript: URLs on companyWebsite (XSS guard)", () => {
+		const result = createApplicationSchema.safeParse({
+			...baseValid,
+			companyWebsite: "javascript:alert(1)",
+		});
+		expect(result.success).toBe(false);
+	});
+
+	it("rejects data: URLs on companyWebsite", () => {
+		const result = createApplicationSchema.safeParse({
+			...baseValid,
+			companyWebsite: "data:text/html,<script>alert(1)</script>",
+		});
+		expect(result.success).toBe(false);
+	});
+
+	it("rejects ftp: URLs on companyWebsite", () => {
+		const result = createApplicationSchema.safeParse({
+			...baseValid,
+			companyWebsite: "ftp://example.com/file",
+		});
+		expect(result.success).toBe(false);
+	});
+
+	it("accepts valid http(s) URLs on companyWebsite", () => {
+		expect(
+			createApplicationSchema.safeParse({ ...baseValid, companyWebsite: "http://example.com" })
+				.success,
+		).toBe(true);
+		expect(
+			createApplicationSchema.safeParse({ ...baseValid, companyWebsite: "https://example.com" })
+				.success,
+		).toBe(true);
+	});
+
+	it("rejects javascript: URLs on sourceUrl", () => {
+		const result = createApplicationSchema.safeParse({
+			...baseValid,
+			sourceUrl: "javascript:alert(1)",
+		});
+		expect(result.success).toBe(false);
+	});
+
 	it("rejects malformed contact email", () => {
 		const result = createApplicationSchema.safeParse({
 			...baseValid,

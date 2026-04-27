@@ -3,12 +3,7 @@
 import { Banknote, Briefcase, Globe, Mail, MapPin, Phone, User as UserIcon } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { JobApplication } from "@/generated/prisma/client";
-
-const WORK_SETUP_LABELS: Record<NonNullable<JobApplication["workSetup"]>, string> = {
-	REMOTE: "Remote",
-	HYBRID: "Hybrid",
-	ONSITE: "Onsite",
-};
+import { WORK_SETUP_LABELS } from "./compensation-fields";
 
 function formatSalary(min: number | null, max: number | null, currency: string | null) {
 	if (min == null && max == null) return null;

@@ -21,6 +21,7 @@ import {
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { JobApplication } from "@/generated/prisma/client";
+import { WORK_SETUP_LABELS } from "./compensation-fields";
 import { StatusBadge } from "./status-badge";
 
 interface ApplicationCardProps {
@@ -30,16 +31,11 @@ interface ApplicationCardProps {
 	onDelete: (id: string) => void;
 }
 
-const WORK_SETUP_SHORT: Record<NonNullable<JobApplication["workSetup"]>, string> = {
-	REMOTE: "Remote",
-	HYBRID: "Hybrid",
-	ONSITE: "Onsite",
-};
-
 function compactSalary(min: number | null, max: number | null, currency: string | null) {
 	if (min == null && max == null) return null;
 	const prefix = currency?.trim() ? `${currency.trim()} ` : "";
-	const fmt = (n: number) => (n >= 1000 ? `${Math.round(n / 1000)}k` : String(n));
+	// Math.floor so the compact label never overstates pay (e.g. 1501 → "1k", not "2k").
+	const fmt = (n: number) => (n >= 1000 ? `${Math.floor(n / 1000)}k` : String(n));
 	if (min != null && max != null) return `${prefix}${fmt(min)}–${fmt(max)}/mo`;
 	if (min != null) return `${prefix}${fmt(min)}+/mo`;
 	return `≤ ${prefix}${fmt(max!)}/mo`;
@@ -56,7 +52,7 @@ export function ApplicationCard({
 		application.salaryMax,
 		application.salaryCurrency,
 	);
-	const setupLabel = application.workSetup ? WORK_SETUP_SHORT[application.workSetup] : null;
+	const setupLabel = application.workSetup ? WORK_SETUP_LABELS[application.workSetup] : null;
 
 	return (
 		<Card size="sm" className="group relative transition-colors hover:ring-primary/30">

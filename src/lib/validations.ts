@@ -21,7 +21,14 @@ export const cvUploadSchema = z.object({
 
 const workSetupEnum = z.enum(["REMOTE", "HYBRID", "ONSITE"]);
 
-const optionalUrl = z.string().url().optional().or(z.literal(""));
+// Block non-http(s) schemes (javascript:, data:, ftp: …) so values can be
+// safely rendered as anchor hrefs without an XSS surface.
+const optionalUrl = z
+	.string()
+	.url()
+	.refine((url) => /^https?:\/\//i.test(url), "Only http and https URLs are allowed")
+	.optional()
+	.or(z.literal(""));
 const optionalEmail = z.string().email().optional().or(z.literal(""));
 
 // Postgres INTEGER is 4 bytes signed (max 2,147,483,647). Stay below to avoid

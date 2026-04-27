@@ -14,10 +14,18 @@ import type { WorkSetup } from "@/generated/prisma/enums";
 
 export const CURRENCIES = ["PHP", "USD", "EUR", "SGD", "AUD", "GBP", "JPY"] as const;
 
+// Single source of truth for work-setup human labels — used by the form select,
+// the detail panel, and the list-card pill.
+export const WORK_SETUP_LABELS: Record<WorkSetup, string> = {
+	REMOTE: "Remote",
+	HYBRID: "Hybrid",
+	ONSITE: "Onsite",
+};
+
 export const WORK_SETUP_OPTIONS: { value: WorkSetup; label: string }[] = [
 	{ value: "REMOTE", label: "Remote (Work from home)" },
-	{ value: "HYBRID", label: "Hybrid" },
-	{ value: "ONSITE", label: "Onsite" },
+	{ value: "HYBRID", label: WORK_SETUP_LABELS.HYBRID },
+	{ value: "ONSITE", label: WORK_SETUP_LABELS.ONSITE },
 ];
 
 export type CompensationValue = {
@@ -60,7 +68,10 @@ export function compensationFromApplication(app: ApplicationLike): CompensationV
 	return {
 		salaryMin: app.salaryMin != null ? String(app.salaryMin) : "",
 		salaryMax: app.salaryMax != null ? String(app.salaryMax) : "",
-		salaryCurrency: app.salaryCurrency ?? "PHP",
+		// Preserve null-ness on hydrate so a no-op edit doesn't silently mutate
+		// a null currency to "PHP". `EMPTY_COMPENSATION` still defaults to "PHP"
+		// for the *new* form.
+		salaryCurrency: app.salaryCurrency ?? "",
 		workSetup: app.workSetup ?? "",
 		locationAddress: app.locationAddress ?? "",
 		companyWebsite: app.companyWebsite ?? "",
@@ -165,21 +176,32 @@ export function CompensationFields({ value, onChange }: Props) {
 
 				<div className="space-y-2">
 					<Label htmlFor="work-setup">Work setup</Label>
-					<Select
-						value={value.workSetup}
-						onValueChange={(v) => update("workSetup", (v ?? "") as "" | WorkSetup)}
-					>
-						<SelectTrigger className="w-full sm:w-[260px]">
-							<SelectValue placeholder="Not specified" />
-						</SelectTrigger>
-						<SelectContent>
-							{WORK_SETUP_OPTIONS.map((o) => (
-								<SelectItem key={o.value} value={o.value}>
-									{o.label}
-								</SelectItem>
-							))}
-						</SelectContent>
-					</Select>
+					<div className="flex items-center gap-2">
+						<Select
+							value={value.workSetup}
+							onValueChange={(v) => update("workSetup", (v ?? "") as "" | WorkSetup)}
+						>
+							<SelectTrigger className="w-full sm:w-[260px]">
+								<SelectValue placeholder="Not specified" />
+							</SelectTrigger>
+							<SelectContent>
+								{WORK_SETUP_OPTIONS.map((o) => (
+									<SelectItem key={o.value} value={o.value}>
+										{o.label}
+									</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
+						{value.workSetup ? (
+							<button
+								type="button"
+								onClick={() => update("workSetup", "")}
+								className="text-xs text-muted-foreground transition-colors hover:text-foreground"
+							>
+								Clear
+							</button>
+						) : null}
+					</div>
 				</div>
 
 				{showLocation ? (

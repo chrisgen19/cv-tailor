@@ -76,11 +76,18 @@ describe("compensationFromApplication", () => {
 		expect(result.locationAddress).toBe("BGC, Taguig");
 	});
 
-	it("falls back to safe defaults for missing/null fields", () => {
+	it("preserves null currency on hydrate (does not silently default to PHP)", () => {
 		const result = compensationFromApplication({});
 		expect(result.salaryMin).toBe("");
 		expect(result.salaryMax).toBe("");
-		expect(result.salaryCurrency).toBe("PHP");
+		expect(result.salaryCurrency).toBe("");
 		expect(result.workSetup).toBe("");
+	});
+
+	it("round-trips a record with null currency back to null on save", () => {
+		const hydrated = compensationFromApplication({ salaryMin: 150_000, salaryCurrency: null });
+		const payload = compensationToPayload(hydrated);
+		expect(payload.salaryMin).toBe(150_000);
+		expect(payload.salaryCurrency).toBeNull();
 	});
 });
