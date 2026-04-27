@@ -41,7 +41,7 @@ export default function CVPage() {
 
 	if (loading) {
 		return (
-			<div className="space-y-6">
+			<div className="mx-auto max-w-5xl space-y-6">
 				<div>
 					<h1 className="text-2xl font-semibold">My CV</h1>
 					<p className="text-muted-foreground">Manage your master CV</p>
@@ -54,7 +54,7 @@ export default function CVPage() {
 	}
 
 	return (
-		<div className="space-y-6">
+		<div className="mx-auto max-w-5xl space-y-6">
 			<div className="flex items-start justify-between">
 				<div>
 					<h1 className="text-2xl font-semibold">My CV</h1>
