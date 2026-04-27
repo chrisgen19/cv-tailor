@@ -72,6 +72,7 @@ function hyperlinkRun(text: string, url: string, size = BODY_HALF): ExternalHype
 
 function nameHeading(name: string): Paragraph {
 	return new Paragraph({
+		heading: HeadingLevel.HEADING_1,
 		alignment: AlignmentType.CENTER,
 		spacing: { after: ptToTwips(CV_STYLES.spacing.sectionAfter) },
 		children: [
@@ -139,6 +140,7 @@ function contactLine(header: TailoredCvHeader): Paragraph | null {
 
 function sectionHeading(text: string): Paragraph {
 	return new Paragraph({
+		heading: HeadingLevel.HEADING_2,
 		keepNext: true,
 		spacing: {
 			before: ptToTwips(CV_STYLES.spacing.sectionBefore),
@@ -192,7 +194,20 @@ function skillParagraph(group: TailoredCvSkillGroup): Paragraph {
 	});
 }
 
+// Generic range — no "Present" assumption. Used for education / certifications
+// where a missing end date doesn't imply ongoing.
 function formatDateRange(start?: string, end?: string): string {
+	const s = start?.trim();
+	const e = end?.trim();
+	if (s && e) return `${s} – ${e}`;
+	if (s) return s;
+	if (e) return e;
+	return "";
+}
+
+// Experience-only — a missing end date means the role is current, so render
+// "Present" as the right-hand bound.
+function formatExperienceDateRange(start?: string, end?: string): string {
 	const s = start?.trim();
 	const e = end?.trim();
 	if (s && e) return `${s} – ${e}`;
@@ -203,7 +218,7 @@ function formatDateRange(start?: string, end?: string): string {
 
 function experienceParagraphs(job: TailoredCvExperience): Paragraph[] {
 	const paragraphs: Paragraph[] = [];
-	const dateRange = formatDateRange(job.start, job.end);
+	const dateRange = formatExperienceDateRange(job.start, job.end);
 	const meta = [job.location, dateRange].filter(Boolean).join(" • ");
 
 	const headerChildren: ParagraphChild[] = [
@@ -257,7 +272,7 @@ function experienceParagraphs(job: TailoredCvExperience): Paragraph[] {
 		paragraphs.push(
 			new Paragraph({
 				bullet: { level: 0 },
-				indent: { left: inchesToTwips(0.25), hanging: inchesToTwips(0.15) },
+				indent: { left: inchesToTwips(0.25), hanging: inchesToTwips(0.25) },
 				spacing: { after: ptToTwips(CV_STYLES.spacing.bulletAfter), line: LINE },
 				children: emphasisRuns(bullet),
 			}),
@@ -353,7 +368,7 @@ function projectParagraphs(project: TailoredCvProject): Paragraph[] {
 		paragraphs.push(
 			new Paragraph({
 				bullet: { level: 0 },
-				indent: { left: inchesToTwips(0.25), hanging: inchesToTwips(0.15) },
+				indent: { left: inchesToTwips(0.25), hanging: inchesToTwips(0.25) },
 				spacing: { after: ptToTwips(CV_STYLES.spacing.bulletAfter), line: LINE },
 				children: emphasisRuns(bullet),
 			}),
@@ -526,7 +541,7 @@ export async function generateDocx(content: string, title?: string): Promise<Buf
 				paragraphs.push(
 					new Paragraph({
 						bullet: { level: 0 },
-						indent: { left: inchesToTwips(0.25), hanging: inchesToTwips(0.15) },
+						indent: { left: inchesToTwips(0.25), hanging: inchesToTwips(0.25) },
 						spacing: { after: ptToTwips(CV_STYLES.spacing.bulletAfter), line: LINE },
 						children: emphasisRuns(block.text),
 					}),

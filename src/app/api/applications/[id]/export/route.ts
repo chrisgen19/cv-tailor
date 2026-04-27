@@ -2,7 +2,7 @@ import { headers } from "next/headers";
 import { type NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { TailoredCvSchema } from "@/lib/cv-schema";
-import { markdownToJson } from "@/lib/cv-serializer";
+import { jsonToMarkdown, looksLikeHtml, markdownToJson } from "@/lib/cv-serializer";
 import { generateCvDocx, generateDocx, markdownToPlainText } from "@/lib/export";
 import { prisma } from "@/lib/prisma";
 
@@ -24,11 +24,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 	const type = request.nextUrl.searchParams.get("type") ?? "cv";
 	const isCoverLetter = type === "cover-letter";
 
-	const markdown = isCoverLetter
+	const rawMarkdown = isCoverLetter
 		? application.coverLetter
 		: (application.tailoredCVEdited ?? application.tailoredCV);
+	// Treat HTML- or whitespace-only content as "no markdown" so the route never
+	// falls back to a renderer that would emit raw tags or a blank file.
+	const usableMarkdown = isUsableMarkdown(rawMarkdown) ? rawMarkdown : null;
+	const cv = isCoverLetter ? null : resolveTailoredCv(application.tailoredCvJson, usableMarkdown);
 
-	if (!markdown && (isCoverLetter || !application.tailoredCvJson)) {
+	if (!usableMarkdown && !cv) {
 		return NextResponse.json(
 			{ error: `No ${isCoverLetter ? "cover letter" : "tailored CV"} to export` },
 			{ status: 400 },
@@ -42,12 +46,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 	if (format === "docx") {
 		let buffer: Buffer;
 		if (isCoverLetter) {
-			buffer = await generateDocx(markdown ?? "", `Cover Letter - ${application.title}`);
+			// Guarded above — usableMarkdown is non-null here.
+			buffer = await generateDocx(usableMarkdown as string, `Cover Letter - ${application.title}`);
+		} else if (cv) {
+			buffer = await generateCvDocx(cv, `${application.title} - Tailored CV`);
 		} else {
-			const cv = resolveTailoredCv(application.tailoredCvJson, markdown);
-			buffer = cv
-				? await generateCvDocx(cv, `${application.title} - Tailored CV`)
-				: await generateDocx(markdown ?? "", `${application.title} - Tailored CV`);
+			// Last resort: validated non-HTML markdown CV with no parseable JSON.
+			buffer = await generateDocx(usableMarkdown as string, `${application.title} - Tailored CV`);
 		}
 
 		return new NextResponse(new Uint8Array(buffer), {
@@ -58,14 +63,24 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 		});
 	}
 
-	// Plain text fallback (for PDF, client will handle rendering)
-	const plainText = markdownToPlainText(markdown ?? "");
+	// Plain text fallback (for PDF, client will handle rendering). When the row
+	// has only structured JSON (no edited markdown), serialize the JSON first so
+	// the response isn't an empty file.
+	const sourceMarkdown = usableMarkdown ?? (cv ? jsonToMarkdown(cv) : "");
+	const plainText = markdownToPlainText(sourceMarkdown);
 	return new NextResponse(plainText, {
 		headers: {
 			"Content-Type": "text/plain; charset=utf-8",
 			"Content-Disposition": `attachment; filename="${baseName}.txt"`,
 		},
 	});
+}
+
+function isUsableMarkdown(value: string | null | undefined): value is string {
+	if (!value) return false;
+	const trimmed = value.trim();
+	if (!trimmed) return false;
+	return !looksLikeHtml(trimmed);
 }
 
 // Prefer the structured JSON when present; fall back to parsing the edited
