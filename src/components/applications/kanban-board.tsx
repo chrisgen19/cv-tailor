@@ -50,9 +50,25 @@ function compactSalary(min: number | null, max: number | null, currency: string 
 	return `≤ ${prefix}${fmt(max!)}/mo`;
 }
 
+/**
+ * Returns a new list with the card matching `id` set to `status`. Exported so
+ * we can unit-test the by-id update path that the optimistic drag and rollback
+ * both rely on.
+ */
+export function setApplicationStatus(
+	apps: JobApplication[],
+	id: string,
+	status: ApplicationStatus,
+): JobApplication[] {
+	return apps.map((a) => (a.id === id ? { ...a, status } : a));
+}
+
 type Props = {
 	applications: JobApplication[];
-	onStatusChange: (applications: JobApplication[]) => void;
+	// React.Dispatch so the board can do functional updates and only revert
+	// the moved card on failure — restoring a snapshot would clobber any
+	// concurrent successful drags.
+	onStatusChange: React.Dispatch<React.SetStateAction<JobApplication[]>>;
 };
 
 export function KanbanBoard({ applications, onStatusChange }: Props) {
@@ -103,10 +119,8 @@ export function KanbanBoard({ applications, onStatusChange }: Props) {
 
 		if (!targetStatus || targetStatus === sourceApp.status) return;
 
-		// Optimistic update
-		const previous = applications;
-		const next = applications.map((a) => (a.id === activeId ? { ...a, status: targetStatus } : a));
-		onStatusChange(next);
+		const previousStatus = sourceApp.status;
+		onStatusChange((curr) => setApplicationStatus(curr, activeId, targetStatus));
 
 		try {
 			const res = await fetch(`/api/applications/${activeId}`, {
@@ -118,7 +132,8 @@ export function KanbanBoard({ applications, onStatusChange }: Props) {
 			toast.success(`Moved to ${STATUS_CONFIG[targetStatus].label}`);
 		} catch {
 			toast.error("Failed to update status");
-			onStatusChange(previous);
+			// Revert only the moved card so concurrent drags aren't clobbered.
+			onStatusChange((curr) => setApplicationStatus(curr, activeId, previousStatus));
 		}
 	};
 

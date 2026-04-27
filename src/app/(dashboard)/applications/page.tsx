@@ -53,8 +53,11 @@ export default function ApplicationsPage() {
 	const [page, setPage] = useState(1);
 	const [loading, setLoading] = useState(true);
 
-	// View
-	const [view, setView] = useState<ApplicationsView>(DEFAULT_APPLICATIONS_VIEW);
+	// View — null until we've read the cookie on mount, so the first fetch
+	// uses the resolved preference (returning kanban users don't pay for an
+	// extra list request + flicker).
+	const [view, setView] = useState<ApplicationsView | null>(null);
+	const [savingView, setSavingView] = useState(false);
 	useEffect(() => {
 		setView(readViewCookie());
 	}, []);
@@ -78,39 +81,49 @@ export default function ApplicationsPage() {
 
 	const [sortField, sortOrder] = sort.split(":");
 
-	const fetchApplications = useCallback(async () => {
-		setLoading(true);
-		try {
-			const params = new URLSearchParams({
-				sort: sortField,
-				order: sortOrder,
-			});
-			if (view === "kanban") {
-				// Kanban renders every status as a column, so no status filter
-				// and no pagination — fetch everything for the user.
-				params.set("page", "1");
-				params.set("limit", String(KANBAN_FETCH_LIMIT));
-			} else {
-				params.set("page", String(page));
-				params.set("limit", String(PAGE_SIZE));
-				if (status !== "ALL") params.set("status", status);
-			}
-			if (search) params.set("search", search);
+	const fetchApplications = useCallback(
+		async (signal?: AbortSignal) => {
+			if (view === null) return;
+			setLoading(true);
+			try {
+				const params = new URLSearchParams({
+					sort: sortField,
+					order: sortOrder,
+				});
+				if (view === "kanban") {
+					// Kanban renders every status as a column, so no status filter
+					// and no pagination — fetch everything for the user.
+					params.set("page", "1");
+					params.set("limit", String(KANBAN_FETCH_LIMIT));
+				} else {
+					params.set("page", String(page));
+					params.set("limit", String(PAGE_SIZE));
+					if (status !== "ALL") params.set("status", status);
+				}
+				if (search) params.set("search", search);
 
-			const res = await fetch(`/api/applications?${params}`);
-			if (!res.ok) throw new Error("Failed to fetch applications");
-			const data = await res.json();
-			setApplications(data.applications);
-			setTotal(data.total);
-		} catch {
-			toast.error("Failed to load applications");
-		} finally {
-			setLoading(false);
-		}
-	}, [view, page, status, search, sortField, sortOrder]);
+				const res = await fetch(`/api/applications?${params}`, { signal });
+				if (!res.ok) throw new Error("Failed to fetch applications");
+				const data = await res.json();
+				if (signal?.aborted) return;
+				setApplications(data.applications);
+				setTotal(data.total);
+			} catch (error) {
+				if ((error as { name?: string }).name === "AbortError") return;
+				toast.error("Failed to load applications");
+			} finally {
+				if (!signal?.aborted) setLoading(false);
+			}
+		},
+		[view, page, status, search, sortField, sortOrder],
+	);
 
 	useEffect(() => {
-		fetchApplications();
+		// Aborting on every change ensures stale responses (older search /
+		// view / page combos) can't overwrite the current state.
+		const controller = new AbortController();
+		fetchApplications(controller.signal);
+		return () => controller.abort();
 	}, [fetchApplications]);
 
 	// Debounce search
@@ -178,10 +191,11 @@ export default function ApplicationsPage() {
 	const totalPages = Math.ceil(total / PAGE_SIZE);
 
 	const handleViewChange = async (next: ApplicationsView) => {
-		if (next === view) return;
+		if (next === view || savingView) return;
 		const previous = view;
 		setView(next);
 		setPage(1);
+		setSavingView(true);
 		try {
 			const res = await fetch("/api/settings/profile", {
 				method: "PATCH",
@@ -192,6 +206,8 @@ export default function ApplicationsPage() {
 		} catch {
 			toast.error("Failed to save view preference");
 			setView(previous);
+		} finally {
+			setSavingView(false);
 		}
 	};
 
@@ -207,7 +223,8 @@ export default function ApplicationsPage() {
 				<div className="flex items-center gap-2">
 					<fieldset
 						aria-label="View mode"
-						className="inline-flex items-center rounded-md border border-border p-0.5"
+						disabled={savingView}
+						className="inline-flex items-center rounded-md border border-border p-0.5 disabled:opacity-50"
 					>
 						<button
 							type="button"

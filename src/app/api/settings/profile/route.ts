@@ -4,6 +4,7 @@ import { z } from "zod";
 import {
 	APPLICATIONS_VIEW_COOKIE,
 	APPLICATIONS_VIEWS,
+	type ApplicationsView,
 	normalizeApplicationsView,
 } from "@/lib/applications-view";
 import { auth } from "@/lib/auth";
@@ -15,6 +16,8 @@ import {
 	THEME_ACCENT_VALUES,
 	THEME_MODE_COOKIE,
 	THEME_MODES,
+	type ThemeAccent,
+	type ThemeMode,
 } from "@/lib/theme";
 
 const updateProfileSchema = z
@@ -37,7 +40,7 @@ const ONE_YEAR = 60 * 60 * 24 * 365;
 
 function setPrefCookies(
 	response: NextResponse,
-	prefs: { themeMode: string; themeAccent: string; applicationsView: string },
+	prefs: { themeMode: ThemeMode; themeAccent: ThemeAccent; applicationsView: ApplicationsView },
 ) {
 	const opts = {
 		httpOnly: false,
