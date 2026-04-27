@@ -228,6 +228,10 @@ function KanbanCard({
 			ref={setNodeRef}
 			style={style}
 			size="sm"
+			// Listeners on the whole card so dragging works from any point.
+			// The title <Link> below stops pointerdown so clicks still navigate.
+			{...attributes}
+			{...listeners}
 			className={cn(
 				"group cursor-grab transition-shadow hover:shadow-md active:cursor-grabbing",
 				dragging && "shadow-lg ring-2 ring-primary",
@@ -242,15 +246,7 @@ function KanbanCard({
 					>
 						{application.title}
 					</Link>
-					<button
-						type="button"
-						aria-label="Drag to reorder"
-						className="text-muted-foreground/40 transition-colors hover:text-muted-foreground"
-						{...attributes}
-						{...listeners}
-					>
-						<GripVertical className="h-4 w-4" />
-					</button>
+					<GripVertical aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground/40" />
 				</div>
 				<div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
 					<span className="flex items-center gap-1">
