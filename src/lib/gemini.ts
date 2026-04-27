@@ -234,6 +234,56 @@ ${jobDescription}`,
 
 // ─── CV Tailoring ────────────────────────────────────────────────────
 
+/** Hard cap on CV text passed to the tailor prompt to bound token cost. */
+export const MAX_TAILOR_CV_CHARS = 30_000;
+
+/**
+ * System instruction for tailorCV. RULE 4 (Markdown bold inside bullets) is a
+ * load-bearing contract with the DOCX/PDF renderers — see issues #10 and #11.
+ * Edits should preserve that signal or update both renderers in lockstep.
+ */
+export const TAILOR_SYSTEM_INSTRUCTION = `You are an expert CV writer and ATS optimization specialist tailoring a candidate's CV to a specific job description.
+
+RULE 1 — ANTI-FABRICATION (highest priority)
+Only include skills, tools, employers, titles, dates, and accomplishments that appear verbatim or as a clear synonym in ORIGINAL CV. If the JOB DESCRIPTION asks for skill X and the ORIGINAL CV contains no evidence of X, omit X entirely. Never invent metrics, certifications, or employment history. When in doubt, leave it out.
+
+RULE 2 — LENGTH BUDGET
+Target one page: at most 550 total words across summary + experience bullets + project bullets + skills items combined. If the candidate has 10 or more years of experience evident in ORIGINAL CV, you may extend to a two-page budget of at most 950 total words. Compress or drop the least relevant experience to stay within budget.
+
+RULE 3 — KEYWORD DENSITY
+Mirror 70–80% of the JOB DESCRIPTION's hard skills (technologies, tools, methodologies, certifications) using the JD's exact phrasing wherever the candidate has matching evidence in ORIGINAL CV. Do not keyword-stuff: every keyword must appear inside a natural, truthful sentence describing real work the candidate has done.
+
+RULE 4 — EMPHASIS PRESERVATION
+Inside experience and project bullet text, wrap JD-aligned keywords in \`**term**\` (markdown bold) so downstream renderers can style them. Use emphasis sparingly — at most one or two bolded terms per bullet — and only on terms that match RULE 3.
+
+RULE 5 — BULLET STYLE
+Each experience and project bullet must:
+- Start with a strong past-tense action verb (Led, Shipped, Migrated, Reduced, Architected, etc.) — never "Responsible for" or "Worked on".
+- Contain a quantified result when ORIGINAL CV provides one. Do not fabricate numbers to satisfy this rule.
+- Stay under 25 words. Trim filler words.
+
+OUTPUT
+Return JSON matching the provided response schema. Do not return markdown, explanations, or commentary outside the schema. Reorder \`experience\` so the most JD-relevant role appears first.`;
+
+export function buildTailorUserPrompt(
+	cvText: string,
+	jobDescription: string,
+	matchAnalysis: MatchAnalysis,
+): string {
+	const boundedCv =
+		cvText.length > MAX_TAILOR_CV_CHARS ? cvText.slice(0, MAX_TAILOR_CV_CHARS) : cvText;
+	return `ORIGINAL CV:
+${boundedCv}
+
+JOB DESCRIPTION:
+${jobDescription}
+
+MATCH ANALYSIS:
+Matched skills: ${matchAnalysis.matchedSkills.map((s) => s.skill).join(", ")}
+Missing skills: ${matchAnalysis.missingSkills.map((s) => s.skill).join(", ")}
+Recommendations: ${matchAnalysis.recommendations.join("; ")}`;
+}
+
 export async function tailorCV(
 	cvText: string,
 	jobDescription: string,
@@ -246,37 +296,12 @@ export async function tailorCV(
 				{
 					role: "user",
 					parts: [
-						{
-							text: `You are an expert CV writer and ATS optimization specialist. Tailor this CV for the specific job description.
-
-CRITICAL RULES:
-- NEVER fabricate experience, skills, or qualifications. Only include items that appear verbatim or as a clear synonym in ORIGINAL CV.
-- Reorder sections to prioritize the most relevant experience.
-- Mirror exact keywords from the job description where truthful.
-- Preserve quantifiable metrics from the original; do not invent new numbers.
-- Compress or remove less relevant experience.
-- Strengthen bullet points to align with job requirements.
-- Use \`**term**\` (markdown bold) inside bullet text to flag JD keywords that should render emphasized in the final document.
-- Keep links in header.links as { url, label }.
-
-OUTPUT FORMAT:
-Return JSON matching the provided response schema. Do not return markdown.
-
-ORIGINAL CV:
-${cvText}
-
-JOB DESCRIPTION:
-${jobDescription}
-
-MATCH ANALYSIS:
-Matched skills: ${matchAnalysis.matchedSkills.map((s) => s.skill).join(", ")}
-Missing skills: ${matchAnalysis.missingSkills.map((s) => s.skill).join(", ")}
-Recommendations: ${matchAnalysis.recommendations.join("; ")}`,
-						},
+						{ text: buildTailorUserPrompt(cvText, jobDescription, matchAnalysis) },
 					],
 				},
 			],
 			config: {
+				systemInstruction: TAILOR_SYSTEM_INSTRUCTION,
 				responseMimeType: "application/json",
 				responseSchema: TailoredCvResponseSchema,
 			},
