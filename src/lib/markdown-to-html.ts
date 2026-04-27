@@ -16,13 +16,17 @@ function escapeHtml(s: string): string {
 	return s.replace(/[&<>"']/g, (c) => ESC_MAP[c] ?? c);
 }
 
+const SAFE_PROTOCOL = /^(?:https?|mailto|tel):/i;
+
 // Inline pass: links → emphasis. Order matters — we escape first, then inject
 // tags so user-supplied `<` in plain text never escapes the encoder.
 function renderInline(raw: string): string {
 	let s = escapeHtml(raw);
 	// [label](url) — both sides are already HTML-escaped, so quotes in URL are
-	// encoded; that's fine for href attributes.
-	s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_m, label, url) => {
+	// encoded; that's fine for href attributes. Reject protocols outside the
+	// allowlist (e.g. `javascript:`) — render as plain text instead.
+	s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, label, url) => {
+		if (!SAFE_PROTOCOL.test(url)) return match;
 		return `<a href="${url}" target="_blank" rel="noopener noreferrer">${label}</a>`;
 	});
 	// **bold** before *italic* so `**x**` doesn't get eaten by the italic regex.

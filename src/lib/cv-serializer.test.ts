@@ -158,7 +158,7 @@ describe("cv-serializer", () => {
 		// Reproduces the Tiptap-stored-as-literal-text failure mode: an entire CV
 		// collapsed onto a single line where `##` and `###` are not at line start.
 		const collapsed =
-			"Christian Diomampo Senior Full Stack Developer chrisgen19@gmail.com ## Summary ten years of experience ## Skills - React, Next.js ### Some Company — *Senior Dev*";
+			"Sample Candidate Senior Full Stack Developer candidate@example.com ## Summary ten years of experience ## Skills - React, Next.js ### Some Company — *Senior Dev*";
 		expect(() => markdownToJson(collapsed)).toThrow(/no recognizable sections/);
 	});
 

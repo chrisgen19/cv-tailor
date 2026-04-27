@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
+import Link from "@tiptap/extension-link";
 import Underline from "@tiptap/extension-underline";
 import type { Editor } from "@tiptap/react";
 import {
@@ -47,6 +48,14 @@ export function TiptapEditor({ content, onUpdate, editable = true, className }: 
 		extensions: [
 			StarterKit.configure({
 				heading: { levels: [1, 2, 3] },
+			}),
+			// Without Link, StarterKit's schema strips <a> tags on parse — markdown
+			// links emitted by markdownToHtml would be silently lost on save.
+			Link.configure({
+				openOnClick: false,
+				autolink: false,
+				protocols: ["http", "https", "mailto", "tel"],
+				HTMLAttributes: { target: "_blank", rel: "noopener noreferrer" },
 			}),
 			Underline,
 		],
