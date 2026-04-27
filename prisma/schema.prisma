@@ -93,6 +93,7 @@ model JobApplication {
   matchAnalysis      Json?
   tailoredCV         String?           @db.Text
   tailoredCVEdited   String?           @db.Text
+  tailoredCvJson     Json?
   coverLetter        String?           @db.Text
   status             ApplicationStatus @default(DRAFT)
   notes              String?           @db.Text

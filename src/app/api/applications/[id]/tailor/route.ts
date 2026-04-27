@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import type { MatchAnalysis } from "@/lib/gemini";
 import { tailorCV } from "@/lib/gemini";
 import { auth } from "@/lib/auth";
+import { jsonToMarkdown } from "@/lib/cv-serializer";
 import { prisma } from "@/lib/prisma";
 
 export async function POST(
@@ -40,17 +41,19 @@ export async function POST(
 	}
 
 	try {
-		const tailored = await tailorCV(
+		const tailoredJson = await tailorCV(
 			masterCV.rawText,
 			application.rawDescription,
 			application.matchAnalysis as unknown as MatchAnalysis,
 		);
+		const tailoredMarkdown = jsonToMarkdown(tailoredJson);
 
 		const updated = await prisma.jobApplication.update({
 			where: { id },
 			data: {
-				tailoredCV: tailored,
-				tailoredCVEdited: tailored,
+				tailoredCV: tailoredMarkdown,
+				tailoredCVEdited: tailoredMarkdown,
+				tailoredCvJson: tailoredJson,
 				status: "TAILORED",
 			},
 		});

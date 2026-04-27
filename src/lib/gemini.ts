@@ -1,4 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
+import type { TailoredCv } from "@/lib/cv-schema";
+import { TailoredCvResponseSchema, TailoredCvSchema } from "@/lib/cv-schema";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 const MODEL = "gemini-3.1-pro-preview";
@@ -236,7 +238,7 @@ export async function tailorCV(
 	cvText: string,
 	jobDescription: string,
 	matchAnalysis: MatchAnalysis,
-): Promise<string> {
+): Promise<TailoredCv> {
 	return withRetry(async () => {
 		const response = await ai.models.generateContent({
 			model: MODEL,
@@ -248,15 +250,17 @@ export async function tailorCV(
 							text: `You are an expert CV writer and ATS optimization specialist. Tailor this CV for the specific job description.
 
 CRITICAL RULES:
-- NEVER fabricate experience, skills, or qualifications
-- Reorder sections to prioritize the most relevant experience
-- Mirror exact keywords from the job description where truthful
-- Add quantifiable metrics where possible (from existing experience)
-- Compress or remove less relevant experience
-- Strengthen bullet points to align with job requirements
-- Maintain professional, concise language
+- NEVER fabricate experience, skills, or qualifications. Only include items that appear verbatim or as a clear synonym in ORIGINAL CV.
+- Reorder sections to prioritize the most relevant experience.
+- Mirror exact keywords from the job description where truthful.
+- Preserve quantifiable metrics from the original; do not invent new numbers.
+- Compress or remove less relevant experience.
+- Strengthen bullet points to align with job requirements.
+- Use \`**term**\` (markdown bold) inside bullet text to flag JD keywords that should render emphasized in the final document.
+- Keep links in header.links as { url, label }.
 
-Output the tailored CV as clean markdown. Use proper headings (##), bullet points, and formatting.
+OUTPUT FORMAT:
+Return JSON matching the provided response schema. Do not return markdown.
 
 ORIGINAL CV:
 ${cvText}
@@ -272,11 +276,16 @@ Recommendations: ${matchAnalysis.recommendations.join("; ")}`,
 					],
 				},
 			],
+			config: {
+				responseMimeType: "application/json",
+				responseSchema: TailoredCvResponseSchema,
+			},
 		});
 
 		const text = response.text;
 		if (!text) throw new Error("Empty response from Gemini");
-		return text;
+		const parsed = JSON.parse(text);
+		return TailoredCvSchema.parse(parsed);
 	});
 }
 
