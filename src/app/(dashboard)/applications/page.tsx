@@ -33,10 +33,7 @@ import {
 	normalizeApplicationsView,
 } from "@/lib/applications-view";
 import { cn } from "@/lib/utils";
-
-const PAGE_SIZE = 20;
-// Kanban v1 fetches all rows; we don't paginate columns.
-const KANBAN_FETCH_LIMIT = 500;
+import { APPLICATIONS_PAGE_SIZE, buildApplicationsQueryParams } from "./build-query-params";
 
 function readViewCookie(): ApplicationsView {
 	if (typeof document === "undefined") return DEFAULT_APPLICATIONS_VIEW;
@@ -86,21 +83,14 @@ export default function ApplicationsPage() {
 			if (view === null) return;
 			setLoading(true);
 			try {
-				const params = new URLSearchParams({
-					sort: sortField,
-					order: sortOrder,
+				const params = buildApplicationsQueryParams({
+					view,
+					page,
+					status,
+					search,
+					sortField,
+					sortOrder,
 				});
-				if (view === "kanban") {
-					// Kanban renders every status as a column, so no status filter
-					// and no pagination — fetch everything for the user.
-					params.set("page", "1");
-					params.set("limit", String(KANBAN_FETCH_LIMIT));
-				} else {
-					params.set("page", String(page));
-					params.set("limit", String(PAGE_SIZE));
-					if (status !== "ALL") params.set("status", status);
-				}
-				if (search) params.set("search", search);
 
 				const res = await fetch(`/api/applications?${params}`, { signal });
 				if (!res.ok) throw new Error("Failed to fetch applications");
@@ -188,7 +178,7 @@ export default function ApplicationsPage() {
 		}
 	};
 
-	const totalPages = Math.ceil(total / PAGE_SIZE);
+	const totalPages = Math.ceil(total / APPLICATIONS_PAGE_SIZE);
 
 	const handleViewChange = async (next: ApplicationsView) => {
 		if (next === view || savingView) return;

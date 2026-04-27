@@ -63,6 +63,48 @@ export function setApplicationStatus(
 	return apps.map((a) => (a.id === id ? { ...a, status } : a));
 }
 
+type StatusChangeUpdater = React.Dispatch<React.SetStateAction<JobApplication[]>>;
+
+type SubmitStatusChangeArgs = {
+	id: string;
+	fromStatus: ApplicationStatus;
+	toStatus: ApplicationStatus;
+	onUpdate: StatusChangeUpdater;
+	fetchFn?: typeof fetch;
+	onSuccess?: (toStatus: ApplicationStatus) => void;
+	onFailure?: () => void;
+};
+
+/**
+ * Optimistic status update with revert-by-id on failure. Exported so the
+ * success / failure / rollback paths can be unit-tested without simulating
+ * dnd-kit pointer events. `fetchFn` is injectable for the same reason.
+ */
+export async function submitStatusChange({
+	id,
+	fromStatus,
+	toStatus,
+	onUpdate,
+	fetchFn = fetch,
+	onSuccess,
+	onFailure,
+}: SubmitStatusChangeArgs): Promise<void> {
+	onUpdate((curr) => setApplicationStatus(curr, id, toStatus));
+	try {
+		const res = await fetchFn(`/api/applications/${id}`, {
+			method: "PATCH",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ status: toStatus }),
+		});
+		if (!res.ok) throw new Error();
+		onSuccess?.(toStatus);
+	} catch {
+		// Revert only the moved card so concurrent drags aren't clobbered.
+		onUpdate((curr) => setApplicationStatus(curr, id, fromStatus));
+		onFailure?.();
+	}
+}
+
 type Props = {
 	applications: JobApplication[];
 	// React.Dispatch so the board can do functional updates and only revert
@@ -119,22 +161,14 @@ export function KanbanBoard({ applications, onStatusChange }: Props) {
 
 		if (!targetStatus || targetStatus === sourceApp.status) return;
 
-		const previousStatus = sourceApp.status;
-		onStatusChange((curr) => setApplicationStatus(curr, activeId, targetStatus));
-
-		try {
-			const res = await fetch(`/api/applications/${activeId}`, {
-				method: "PATCH",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ status: targetStatus }),
-			});
-			if (!res.ok) throw new Error();
-			toast.success(`Moved to ${STATUS_CONFIG[targetStatus].label}`);
-		} catch {
-			toast.error("Failed to update status");
-			// Revert only the moved card so concurrent drags aren't clobbered.
-			onStatusChange((curr) => setApplicationStatus(curr, activeId, previousStatus));
-		}
+		await submitStatusChange({
+			id: activeId,
+			fromStatus: sourceApp.status,
+			toStatus: targetStatus,
+			onUpdate: onStatusChange,
+			onSuccess: (status) => toast.success(`Moved to ${STATUS_CONFIG[status].label}`),
+			onFailure: () => toast.error("Failed to update status"),
+		});
 	};
 
 	return (

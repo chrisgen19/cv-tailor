@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { JobApplication } from "@/generated/prisma/client";
-import { setApplicationStatus } from "./kanban-board";
+import { setApplicationStatus, submitStatusChange } from "./kanban-board";
 
 function app(id: string, status: JobApplication["status"]): JobApplication {
 	return {
@@ -72,5 +72,133 @@ describe("setApplicationStatus", () => {
 		const apps = [app("a", "DRAFT")];
 		const next = setApplicationStatus(apps, "missing", "APPLIED");
 		expect(next).toEqual(apps);
+	});
+});
+
+describe("submitStatusChange", () => {
+	function makeUpdater(initial: JobApplication[]) {
+		let current = initial;
+		const onUpdate = vi.fn(
+			(updater: JobApplication[] | ((c: JobApplication[]) => JobApplication[])) => {
+				current = typeof updater === "function" ? updater(current) : updater;
+			},
+		);
+		return { onUpdate, get: () => current };
+	}
+
+	it("optimistically updates and resolves to the target status on a 200 response", async () => {
+		const board = makeUpdater([app("a", "DRAFT"), app("b", "DRAFT")]);
+		const fetchFn = vi.fn().mockResolvedValue({ ok: true });
+		const onSuccess = vi.fn();
+		const onFailure = vi.fn();
+
+		await submitStatusChange({
+			id: "a",
+			fromStatus: "DRAFT",
+			toStatus: "APPLIED",
+			onUpdate: board.onUpdate,
+			fetchFn: fetchFn as unknown as typeof fetch,
+			onSuccess,
+			onFailure,
+		});
+
+		expect(fetchFn).toHaveBeenCalledWith(
+			"/api/applications/a",
+			expect.objectContaining({
+				method: "PATCH",
+				body: JSON.stringify({ status: "APPLIED" }),
+			}),
+		);
+		expect(board.get().find((x) => x.id === "a")?.status).toBe("APPLIED");
+		expect(board.get().find((x) => x.id === "b")?.status).toBe("DRAFT");
+		expect(onSuccess).toHaveBeenCalledWith("APPLIED");
+		expect(onFailure).not.toHaveBeenCalled();
+	});
+
+	it("reverts only the moved card when the PATCH responds with !ok", async () => {
+		const board = makeUpdater([app("a", "DRAFT"), app("b", "INTERVIEW")]);
+		const fetchFn = vi.fn().mockResolvedValue({ ok: false });
+		const onSuccess = vi.fn();
+		const onFailure = vi.fn();
+
+		await submitStatusChange({
+			id: "a",
+			fromStatus: "DRAFT",
+			toStatus: "APPLIED",
+			onUpdate: board.onUpdate,
+			fetchFn: fetchFn as unknown as typeof fetch,
+			onSuccess,
+			onFailure,
+		});
+
+		// Two updates: optimistic forward, then revert.
+		expect(board.onUpdate).toHaveBeenCalledTimes(2);
+		expect(board.get().find((x) => x.id === "a")?.status).toBe("DRAFT");
+		// Unrelated card is untouched.
+		expect(board.get().find((x) => x.id === "b")?.status).toBe("INTERVIEW");
+		expect(onFailure).toHaveBeenCalledTimes(1);
+		expect(onSuccess).not.toHaveBeenCalled();
+	});
+
+	it("reverts when fetch itself rejects (network error)", async () => {
+		const board = makeUpdater([app("a", "DRAFT")]);
+		const fetchFn = vi.fn().mockRejectedValue(new Error("network down"));
+		const onFailure = vi.fn();
+
+		await submitStatusChange({
+			id: "a",
+			fromStatus: "DRAFT",
+			toStatus: "APPLIED",
+			onUpdate: board.onUpdate,
+			fetchFn: fetchFn as unknown as typeof fetch,
+			onFailure,
+		});
+
+		expect(board.get().find((x) => x.id === "a")?.status).toBe("DRAFT");
+		expect(onFailure).toHaveBeenCalledOnce();
+	});
+
+	it("does not clobber a concurrent successful move when reverting", async () => {
+		// Two cards both DRAFT initially.
+		const board = makeUpdater([app("a", "DRAFT"), app("b", "DRAFT")]);
+
+		// Drag #1 (a → APPLIED) will fail; we capture its rollback after drag #2 commits.
+		let resolveFirst: (v: { ok: boolean }) => void = () => {};
+		const fetchFn = vi
+			.fn()
+			.mockImplementationOnce(
+				() =>
+					new Promise((r) => {
+						resolveFirst = r;
+					}),
+			)
+			.mockResolvedValueOnce({ ok: true });
+
+		// Kick off drag #1 (will block on resolveFirst).
+		const first = submitStatusChange({
+			id: "a",
+			fromStatus: "DRAFT",
+			toStatus: "APPLIED",
+			onUpdate: board.onUpdate,
+			fetchFn: fetchFn as unknown as typeof fetch,
+		});
+
+		// Drag #2 (b → INTERVIEW) succeeds before drag #1 finishes.
+		await submitStatusChange({
+			id: "b",
+			fromStatus: "DRAFT",
+			toStatus: "INTERVIEW",
+			onUpdate: board.onUpdate,
+			fetchFn: fetchFn as unknown as typeof fetch,
+		});
+
+		expect(board.get().find((x) => x.id === "b")?.status).toBe("INTERVIEW");
+
+		// Drag #1 finally fails — must revert "a" only, not blow away b's INTERVIEW.
+		resolveFirst({ ok: false });
+		await first;
+
+		expect(board.get().find((x) => x.id === "a")?.status).toBe("DRAFT");
+		expect(board.get().find((x) => x.id === "b")?.status).toBe("INTERVIEW");
 	});
 });
