@@ -1,10 +1,55 @@
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 import type { MatchAnalysis } from "@/lib/gemini";
-import { tailorCV } from "@/lib/gemini";
+import {
+	createCachedMasterCv,
+	extendCachedMasterCv,
+	tailorCV,
+} from "@/lib/gemini";
 import { auth } from "@/lib/auth";
 import { jsonToMarkdown } from "@/lib/cv-serializer";
 import { prisma } from "@/lib/prisma";
+
+const CACHE_REFRESH_SLACK_MS = 5 * 60 * 1000; // refresh if expiring within 5 min
+
+async function ensureMasterCvCache(masterCv: {
+	id: string;
+	rawText: string;
+	geminiCacheName: string | null;
+	geminiCacheExpiresAt: Date | null;
+}): Promise<string | undefined> {
+	const now = Date.now();
+	if (
+		masterCv.geminiCacheName &&
+		masterCv.geminiCacheExpiresAt &&
+		masterCv.geminiCacheExpiresAt.getTime() - now > CACHE_REFRESH_SLACK_MS
+	) {
+		return masterCv.geminiCacheName;
+	}
+
+	if (masterCv.geminiCacheName) {
+		const extendedAt = await extendCachedMasterCv(masterCv.geminiCacheName);
+		if (extendedAt) {
+			await prisma.masterCV.update({
+				where: { id: masterCv.id },
+				data: { geminiCacheExpiresAt: extendedAt },
+			});
+			return masterCv.geminiCacheName;
+		}
+		// Extend failed (likely expired/missing) — fall through and recreate.
+	}
+
+	const created = await createCachedMasterCv(masterCv.id, masterCv.rawText);
+	if (!created) return undefined;
+	await prisma.masterCV.update({
+		where: { id: masterCv.id },
+		data: {
+			geminiCacheName: created.name,
+			geminiCacheExpiresAt: created.expiresAt,
+		},
+	});
+	return created.name;
+}
 
 export async function POST(
 	_request: Request,
@@ -41,11 +86,13 @@ export async function POST(
 	}
 
 	try {
-		const tailoredJson = await tailorCV(
-			masterCV.rawText,
-			application.rawDescription,
-			application.matchAnalysis as unknown as MatchAnalysis,
-		);
+		const cachedContent = await ensureMasterCvCache(masterCV);
+		const tailoredJson = await tailorCV({
+			cvText: masterCV.rawText,
+			jobDescription: application.rawDescription,
+			matchAnalysis: application.matchAnalysis as unknown as MatchAnalysis,
+			cachedContent,
+		});
 		const tailoredMarkdown = jsonToMarkdown(tailoredJson);
 
 		const updated = await prisma.jobApplication.update({

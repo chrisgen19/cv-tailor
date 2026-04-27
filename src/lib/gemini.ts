@@ -237,6 +237,9 @@ ${jobDescription}`,
 /** Hard cap on CV text passed to the tailor prompt to bound token cost. */
 export const MAX_TAILOR_CV_CHARS = 30_000;
 
+/** TTL for the master-CV Gemini context cache. */
+export const MASTER_CV_CACHE_TTL_SECONDS = 3600;
+
 /**
  * System instruction for tailorCV. RULE 4 (Markdown bold inside bullets) is a
  * load-bearing contract with the DOCX/PDF renderers — see issues #10 and #11.
@@ -265,6 +268,13 @@ Each experience and project bullet must:
 OUTPUT
 Return JSON matching the provided response schema. Do not return markdown, explanations, or commentary outside the schema. Reorder \`experience\` so the most JD-relevant role appears first.`;
 
+function formatMatchAnalysis(matchAnalysis: MatchAnalysis): string {
+	return `MATCH ANALYSIS:
+Matched skills: ${matchAnalysis.matchedSkills.map((s) => s.skill).join(", ")}
+Missing skills: ${matchAnalysis.missingSkills.map((s) => s.skill).join(", ")}
+Recommendations: ${matchAnalysis.recommendations.join("; ")}`;
+}
+
 export function buildTailorUserPrompt(
 	cvText: string,
 	jobDescription: string,
@@ -278,39 +288,229 @@ ${boundedCv}
 JOB DESCRIPTION:
 ${jobDescription}
 
-MATCH ANALYSIS:
-Matched skills: ${matchAnalysis.matchedSkills.map((s) => s.skill).join(", ")}
-Missing skills: ${matchAnalysis.missingSkills.map((s) => s.skill).join(", ")}
-Recommendations: ${matchAnalysis.recommendations.join("; ")}`;
+${formatMatchAnalysis(matchAnalysis)}`;
 }
 
-export async function tailorCV(
-	cvText: string,
+/** Used when ORIGINAL CV is supplied via Gemini context cache. */
+export function buildTailorUserPromptCached(
 	jobDescription: string,
 	matchAnalysis: MatchAnalysis,
-): Promise<TailoredCv> {
-	return withRetry(async () => {
-		const response = await ai.models.generateContent({
+): string {
+	return `JOB DESCRIPTION:
+${jobDescription}
+
+${formatMatchAnalysis(matchAnalysis)}`;
+}
+
+// ─── Master CV cache lifecycle ───────────────────────────────────────
+
+export interface MasterCvCacheResult {
+	name: string;
+	expiresAt: Date;
+}
+
+/**
+ * Create a Gemini context cache holding ORIGINAL CV + system instruction.
+ * Returns null on failure (e.g. content below the model's minimum cache size,
+ * transient SDK error). Callers should treat null as "no cache available" and
+ * fall back to inline CV in the user prompt.
+ */
+export async function createCachedMasterCv(
+	masterCvId: string,
+	rawText: string,
+): Promise<MasterCvCacheResult | null> {
+	const boundedCv =
+		rawText.length > MAX_TAILOR_CV_CHARS ? rawText.slice(0, MAX_TAILOR_CV_CHARS) : rawText;
+	try {
+		const cache = await ai.caches.create({
 			model: MODEL,
-			contents: [
-				{
-					role: "user",
-					parts: [
-						{ text: buildTailorUserPrompt(cvText, jobDescription, matchAnalysis) },
-					],
-				},
-			],
 			config: {
+				contents: [
+					{ role: "user", parts: [{ text: `ORIGINAL CV:\n${boundedCv}` }] },
+				],
 				systemInstruction: TAILOR_SYSTEM_INSTRUCTION,
-				responseMimeType: "application/json",
-				responseSchema: TailoredCvResponseSchema,
+				ttl: `${MASTER_CV_CACHE_TTL_SECONDS}s`,
+				displayName: `master-cv-${masterCvId}`,
 			},
 		});
+		if (!cache.name) return null;
+		return {
+			name: cache.name,
+			expiresAt: new Date(Date.now() + MASTER_CV_CACHE_TTL_SECONDS * 1000),
+		};
+	} catch (err) {
+		console.warn(
+			`[tailor] master CV cache create failed (id=${masterCvId}): ${err instanceof Error ? err.message : String(err)}`,
+		);
+		return null;
+	}
+}
 
-		const text = response.text;
-		if (!text) throw new Error("Empty response from Gemini");
-		const parsed = JSON.parse(text);
-		return TailoredCvSchema.parse(parsed);
+export async function extendCachedMasterCv(name: string): Promise<Date | null> {
+	try {
+		await ai.caches.update({
+			name,
+			config: { ttl: `${MASTER_CV_CACHE_TTL_SECONDS}s` },
+		});
+		return new Date(Date.now() + MASTER_CV_CACHE_TTL_SECONDS * 1000);
+	} catch (err) {
+		console.warn(
+			`[tailor] master CV cache extend failed: ${err instanceof Error ? err.message : String(err)}`,
+		);
+		return null;
+	}
+}
+
+export async function deleteCachedMasterCv(name: string): Promise<void> {
+	try {
+		await ai.caches.delete({ name });
+	} catch (err) {
+		console.warn(
+			`[tailor] master CV cache delete failed: ${err instanceof Error ? err.message : String(err)}`,
+		);
+	}
+}
+
+// ─── Tailor (with optional cache + self-critique) ────────────────────
+
+interface UsageInfo {
+	promptTokens?: number;
+	cachedTokens?: number;
+	outputTokens?: number;
+}
+
+function readUsage(meta: unknown): UsageInfo {
+	const m = meta as
+		| {
+				promptTokenCount?: number;
+				cachedContentTokenCount?: number;
+				candidatesTokenCount?: number;
+		  }
+		| undefined;
+	return {
+		promptTokens: m?.promptTokenCount,
+		cachedTokens: m?.cachedContentTokenCount,
+		outputTokens: m?.candidatesTokenCount,
+	};
+}
+
+function logUsage(label: string, usage: UsageInfo): void {
+	if (process.env.TAILOR_LOG_USAGE === "0") return;
+	console.log(
+		`[tailor] ${label} prompt=${usage.promptTokens ?? "?"} cached=${usage.cachedTokens ?? 0} output=${usage.outputTokens ?? "?"}`,
+	);
+}
+
+interface TailorOnceInput {
+	cvText: string;
+	jobDescription: string;
+	matchAnalysis: MatchAnalysis;
+	cachedContent?: string;
+}
+
+async function tailorDraft(
+	input: TailorOnceInput,
+): Promise<{ cv: TailoredCv; usage: UsageInfo }> {
+	const userText = input.cachedContent
+		? buildTailorUserPromptCached(input.jobDescription, input.matchAnalysis)
+		: buildTailorUserPrompt(input.cvText, input.jobDescription, input.matchAnalysis);
+
+	const response = await ai.models.generateContent({
+		model: MODEL,
+		contents: [{ role: "user", parts: [{ text: userText }] }],
+		config: {
+			...(input.cachedContent
+				? { cachedContent: input.cachedContent }
+				: { systemInstruction: TAILOR_SYSTEM_INSTRUCTION }),
+			responseMimeType: "application/json",
+			responseSchema: TailoredCvResponseSchema,
+		},
+	});
+
+	const text = response.text;
+	if (!text) throw new Error("Empty response from Gemini");
+	return {
+		cv: TailoredCvSchema.parse(JSON.parse(text)),
+		usage: readUsage(response.usageMetadata),
+	};
+}
+
+export const TAILOR_CRITIQUE_SYSTEM_INSTRUCTION = `You are reviewing a tailored CV draft for truthfulness and JD alignment.
+
+Your task:
+1. For each experience and project bullet in DRAFT, verify it traces to ORIGINAL CV. Remove or rewrite any bullet that fabricates skills, metrics, employers, or accomplishments.
+2. Check keyword coverage: ensure 70–80% of JOB DESCRIPTION's hard skills appear naturally in the revised CV where supported by ORIGINAL CV.
+3. Verify each bullet starts with a strong past-tense action verb and stays under 25 words. Trim or rewrite as needed.
+4. Verify markdown \`**bold**\` is applied sparingly to JD-aligned terms only.
+5. If DRAFT is already correct, return it unchanged.
+
+Return JSON matching the provided response schema. Do not return commentary.`;
+
+export function buildCritiquePrompt(
+	cvText: string,
+	jobDescription: string,
+	draft: TailoredCv,
+): string {
+	const boundedCv =
+		cvText.length > MAX_TAILOR_CV_CHARS ? cvText.slice(0, MAX_TAILOR_CV_CHARS) : cvText;
+	return `ORIGINAL CV:
+${boundedCv}
+
+JOB DESCRIPTION:
+${jobDescription}
+
+DRAFT (JSON to review and revise):
+${JSON.stringify(draft, null, 2)}`;
+}
+
+async function critiqueTailoredCv(
+	cvText: string,
+	jobDescription: string,
+	draft: TailoredCv,
+): Promise<{ cv: TailoredCv; usage: UsageInfo }> {
+	const response = await ai.models.generateContent({
+		model: MODEL,
+		contents: [
+			{
+				role: "user",
+				parts: [{ text: buildCritiquePrompt(cvText, jobDescription, draft) }],
+			},
+		],
+		config: {
+			systemInstruction: TAILOR_CRITIQUE_SYSTEM_INSTRUCTION,
+			responseMimeType: "application/json",
+			responseSchema: TailoredCvResponseSchema,
+		},
+	});
+	const text = response.text;
+	if (!text) throw new Error("Empty response from Gemini critique");
+	return {
+		cv: TailoredCvSchema.parse(JSON.parse(text)),
+		usage: readUsage(response.usageMetadata),
+	};
+}
+
+export interface TailorCvInput {
+	cvText: string;
+	jobDescription: string;
+	matchAnalysis: MatchAnalysis;
+	/** Resource name from createCachedMasterCv. When present, CV is supplied via cache. */
+	cachedContent?: string;
+	/** Skip the critique pass (cost-sensitive flows). Defaults to env TAILOR_SKIP_CRITIQUE === "1". */
+	skipCritique?: boolean;
+}
+
+export async function tailorCV(input: TailorCvInput): Promise<TailoredCv> {
+	return withRetry(async () => {
+		const draft = await tailorDraft(input);
+		logUsage("draft", draft.usage);
+
+		const skipCritique = input.skipCritique ?? process.env.TAILOR_SKIP_CRITIQUE === "1";
+		if (skipCritique) return draft.cv;
+
+		const revised = await critiqueTailoredCv(input.cvText, input.jobDescription, draft.cv);
+		logUsage("critique", revised.usage);
+		return revised.cv;
 	});
 }
 
