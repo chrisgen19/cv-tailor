@@ -138,6 +138,30 @@ describe("cv-serializer", () => {
 		expect(looksLikeHtml("Just plain text")).toBe(false);
 	});
 
+	it("recovers title when an editor round-trip merged it onto the contact line", () => {
+		// jsonToMarkdown previously emitted **Title** and the contact line on
+		// consecutive lines (no blank between). CommonMark soft-break rules then
+		// caused markdown-to-html to merge them into one <p>; htmlToMarkdown on
+		// save produced a single line — we still want title recovered cleanly.
+		const merged =
+			"# Jane Doe\n**Senior Engineer** jane@example.com • +1 555 123 4567 • Remote • [Site](https://jane.dev)";
+		const parsed = markdownToJson(merged);
+		expect(parsed.header.name).toBe("Jane Doe");
+		expect(parsed.header.title).toBe("Senior Engineer");
+		expect(parsed.header.email).toBe("jane@example.com");
+		expect(parsed.header.phone).toBe("+1 555 123 4567");
+		expect(parsed.header.location).toBe("Remote");
+		expect(parsed.header.links[0]).toEqual({ label: "Site", url: "https://jane.dev" });
+	});
+
+	it("refuses degenerate markdown where ## markers are not line-anchored", () => {
+		// Reproduces the Tiptap-stored-as-literal-text failure mode: an entire CV
+		// collapsed onto a single line where `##` and `###` are not at line start.
+		const collapsed =
+			"Sample Candidate Senior Full Stack Developer candidate@example.com ## Summary ten years of experience ## Skills - React, Next.js ### Some Company — *Senior Dev*";
+		expect(() => markdownToJson(collapsed)).toThrow(/no recognizable sections/);
+	});
+
 	it("handles markdown with missing optional sections", () => {
 		const minimal = "# John Smith\n\njohn@example.com\n\n## Summary\n\nMinimal CV.";
 		const parsed = markdownToJson(minimal);

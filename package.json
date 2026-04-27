@@ -25,7 +25,6 @@
     "@prisma/adapter-pg": "^7.5.0",
     "@prisma/client": "^7.5.0",
     "@react-pdf/renderer": "^4.3.2",
-    "@tiptap/extension-underline": "^3.20.2",
     "@tiptap/pm": "^3.20.2",
     "@tiptap/react": "^3.20.2",
     "@tiptap/starter-kit": "^3.20.2",

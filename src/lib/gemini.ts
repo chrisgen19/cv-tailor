@@ -269,6 +269,9 @@ Each experience and project bullet must:
 - Contain a quantified result when ORIGINAL CV provides one. Do not fabricate numbers to satisfy this rule.
 - Stay under 25 words. Trim filler words.
 
+RULE 6 — REFERENCE SECTIONS (preserve in full)
+Education and certifications are reference data, not narrative. Include EVERY education entry and EVERY certification from ORIGINAL CV — do not drop, summarize, or reorder them. The length budget in RULE 2 applies only to summary + experience + project + skills text. Header fields (name, title, email, phone, location, links) must be plain text — never wrap them in \`**\`, \`*\`, or other markdown markers.
+
 OUTPUT
 Return JSON matching the provided response schema. Do not return markdown, explanations, or commentary outside the schema. Reorder \`experience\` so the most JD-relevant role appears first.`;
 
