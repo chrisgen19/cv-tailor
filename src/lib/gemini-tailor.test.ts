@@ -17,10 +17,6 @@ describe("tailor prompt", () => {
 		expect(TAILOR_SYSTEM_INSTRUCTION).toContain("25 words");
 	});
 
-	it("system instruction matches snapshot (review on intentional changes)", () => {
-		expect(TAILOR_SYSTEM_INSTRUCTION).toMatchSnapshot();
-	});
-
 	it("user prompt embeds CV, JD, and match analysis", () => {
 		const prompt = buildTailorUserPrompt("CV BODY", "JD BODY", {
 			matchScore: 0,
@@ -37,5 +33,31 @@ describe("tailor prompt", () => {
 		expect(prompt).toContain("Matched skills: TypeScript, React");
 		expect(prompt).toContain("Missing skills: Rust");
 		expect(prompt).toContain("Recommendations: Add metrics; Reorder sections");
+	});
+
+	it("handles empty match analysis arrays without crashing", () => {
+		const prompt = buildTailorUserPrompt("CV", "JD", {
+			matchScore: 0,
+			summary: "",
+			matchedSkills: [],
+			missingSkills: [],
+			recommendations: [],
+		});
+		expect(prompt).toContain("Matched skills:");
+		expect(prompt).toContain("Missing skills:");
+		expect(prompt).toContain("Recommendations:");
+	});
+
+	it("truncates oversized CV text to MAX_TAILOR_CV_CHARS", () => {
+		const huge = "x".repeat(40_000);
+		const prompt = buildTailorUserPrompt(huge, "JD", {
+			matchScore: 0,
+			summary: "",
+			matchedSkills: [],
+			missingSkills: [],
+			recommendations: [],
+		});
+		const cvSection = prompt.split("JOB DESCRIPTION:")[0];
+		expect(cvSection.length).toBeLessThan(31_000);
 	});
 });

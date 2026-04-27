@@ -234,6 +234,14 @@ ${jobDescription}`,
 
 // ─── CV Tailoring ────────────────────────────────────────────────────
 
+/** Hard cap on CV text passed to the tailor prompt to bound token cost. */
+export const MAX_TAILOR_CV_CHARS = 30_000;
+
+/**
+ * System instruction for tailorCV. RULE 4 (Markdown bold inside bullets) is a
+ * load-bearing contract with the DOCX/PDF renderers — see issues #10 and #11.
+ * Edits should preserve that signal or update both renderers in lockstep.
+ */
 export const TAILOR_SYSTEM_INSTRUCTION = `You are an expert CV writer and ATS optimization specialist tailoring a candidate's CV to a specific job description.
 
 RULE 1 — ANTI-FABRICATION (highest priority)
@@ -262,8 +270,10 @@ export function buildTailorUserPrompt(
 	jobDescription: string,
 	matchAnalysis: MatchAnalysis,
 ): string {
+	const boundedCv =
+		cvText.length > MAX_TAILOR_CV_CHARS ? cvText.slice(0, MAX_TAILOR_CV_CHARS) : cvText;
 	return `ORIGINAL CV:
-${cvText}
+${boundedCv}
 
 JOB DESCRIPTION:
 ${jobDescription}
