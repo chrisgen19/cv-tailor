@@ -78,6 +78,7 @@ model MasterCV {
   parsedSections       Json?
   geminiCacheName      String?
   geminiCacheExpiresAt DateTime?
+  geminiCacheModel     String?
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
 

@@ -3,7 +3,9 @@ import { NextResponse } from "next/server";
 import type { MatchAnalysis } from "@/lib/gemini";
 import {
 	createCachedMasterCv,
+	deleteCachedMasterCv,
 	extendCachedMasterCv,
+	getModel,
 	tailorCVWithMeta,
 } from "@/lib/gemini";
 import { auth } from "@/lib/auth";
@@ -17,8 +19,31 @@ async function ensureMasterCvCache(masterCv: {
 	rawText: string;
 	geminiCacheName: string | null;
 	geminiCacheExpiresAt: Date | null;
+	geminiCacheModel: string | null;
 }): Promise<string | undefined> {
 	const now = Date.now();
+	const currentModel = getModel();
+
+	// Gemini context caches are bound to the model that created them. If the
+	// active model is unknown or different, delete best-effort and recreate.
+	if (
+		masterCv.geminiCacheName &&
+		masterCv.geminiCacheModel !== currentModel
+	) {
+		await deleteCachedMasterCv(masterCv.geminiCacheName);
+		await prisma.masterCV.update({
+			where: { id: masterCv.id },
+			data: {
+				geminiCacheName: null,
+				geminiCacheExpiresAt: null,
+				geminiCacheModel: null,
+			},
+		});
+		masterCv.geminiCacheName = null;
+		masterCv.geminiCacheExpiresAt = null;
+		masterCv.geminiCacheModel = null;
+	}
+
 	if (
 		masterCv.geminiCacheName &&
 		masterCv.geminiCacheExpiresAt &&
@@ -46,6 +71,7 @@ async function ensureMasterCvCache(masterCv: {
 		data: {
 			geminiCacheName: created.name,
 			geminiCacheExpiresAt: created.expiresAt,
+			geminiCacheModel: created.model,
 		},
 	});
 	return created.name;
@@ -96,7 +122,11 @@ export async function POST(
 		if (cacheWasStale) {
 			await prisma.masterCV.update({
 				where: { id: masterCV.id },
-				data: { geminiCacheName: null, geminiCacheExpiresAt: null },
+				data: {
+					geminiCacheName: null,
+					geminiCacheExpiresAt: null,
+					geminiCacheModel: null,
+				},
 			});
 		}
 		const tailoredMarkdown = jsonToMarkdown(tailoredJson);
