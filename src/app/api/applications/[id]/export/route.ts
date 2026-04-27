@@ -24,15 +24,19 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 	const type = request.nextUrl.searchParams.get("type") ?? "cv";
 	const isCoverLetter = type === "cover-letter";
 
-	const rawMarkdown = isCoverLetter
+	const rawContent = isCoverLetter
 		? application.coverLetter
 		: (application.tailoredCVEdited ?? application.tailoredCV);
-	// Treat HTML- or whitespace-only content as "no markdown" so the route never
-	// falls back to a renderer that would emit raw tags or a blank file.
-	const usableMarkdown = isUsableMarkdown(rawMarkdown) ? rawMarkdown : null;
-	const cv = isCoverLetter ? null : resolveTailoredCv(application.tailoredCvJson, usableMarkdown);
+	// Cover letters are saved as Tiptap HTML (no JSON fallback exists), so
+	// HTML must pass through. CVs additionally have a structured-JSON path
+	// — for them, treat HTML / whitespace-only markdown as "no markdown" so
+	// the route never falls back to a renderer that would emit raw tags.
+	const hasContent = Boolean(rawContent?.trim());
+	const usableCvMarkdown = !isCoverLetter && isUsableMarkdown(rawContent) ? rawContent : null;
+	const cv = isCoverLetter ? null : resolveTailoredCv(application.tailoredCvJson, usableCvMarkdown);
 
-	if (!usableMarkdown && !cv) {
+	const canExport = isCoverLetter ? hasContent : Boolean(usableCvMarkdown || cv);
+	if (!canExport) {
 		return NextResponse.json(
 			{ error: `No ${isCoverLetter ? "cover letter" : "tailored CV"} to export` },
 			{ status: 400 },
@@ -46,13 +50,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 	if (format === "docx") {
 		let buffer: Buffer;
 		if (isCoverLetter) {
-			// Guarded above — usableMarkdown is non-null here.
-			buffer = await generateDocx(usableMarkdown as string, `Cover Letter - ${application.title}`);
+			// Guarded above — rawContent is non-empty here.
+			buffer = await generateDocx(rawContent as string, `Cover Letter - ${application.title}`);
 		} else if (cv) {
 			buffer = await generateCvDocx(cv, `${application.title} - Tailored CV`);
 		} else {
 			// Last resort: validated non-HTML markdown CV with no parseable JSON.
-			buffer = await generateDocx(usableMarkdown as string, `${application.title} - Tailored CV`);
+			buffer = await generateDocx(usableCvMarkdown as string, `${application.title} - Tailored CV`);
 		}
 
 		return new NextResponse(new Uint8Array(buffer), {
@@ -63,10 +67,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 		});
 	}
 
-	// Plain text fallback (for PDF, client will handle rendering). When the row
-	// has only structured JSON (no edited markdown), serialize the JSON first so
-	// the response isn't an empty file.
-	const sourceMarkdown = usableMarkdown ?? (cv ? jsonToMarkdown(cv) : "");
+	// Plain text fallback (for PDF, client will handle rendering). When the CV
+	// row has only structured JSON (no edited markdown), serialize the JSON
+	// first so the response isn't an empty file. Cover letters fall through
+	// the same plain-text path on whatever content they have.
+	const sourceMarkdown = isCoverLetter
+		? (rawContent ?? "")
+		: (usableCvMarkdown ?? (cv ? jsonToMarkdown(cv) : ""));
 	const plainText = markdownToPlainText(sourceMarkdown);
 	return new NextResponse(plainText, {
 		headers: {
