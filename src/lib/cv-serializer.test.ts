@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TailoredCv } from "@/lib/cv-schema";
-import { jsonToMarkdown, markdownToJson } from "@/lib/cv-serializer";
+import { jsonToMarkdown, looksLikeHtml, markdownToJson } from "@/lib/cv-serializer";
 
 const sample: TailoredCv = {
 	header: {
@@ -111,6 +111,13 @@ describe("cv-serializer", () => {
 		expect(parsed.certifications[0].name).toBe("AWS Solutions Architect");
 		expect(parsed.certifications[0].issuer).toBe("AWS");
 		expect(parsed.certifications[0].date).toBe("2023");
+	});
+
+	it("refuses to parse HTML (Tiptap output) as markdown", () => {
+		const html =
+			"<p>Here is your CV.</p><h1>Jane Doe</h1><p>jane@example.com</p>";
+		expect(looksLikeHtml(html)).toBe(true);
+		expect(() => markdownToJson(html)).toThrow(/HTML/);
 	});
 
 	it("handles markdown with missing optional sections", () => {

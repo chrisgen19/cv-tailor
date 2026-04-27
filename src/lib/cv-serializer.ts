@@ -99,7 +99,22 @@ interface RawSection {
 	lines: string[];
 }
 
+/**
+ * Tiptap stores edited content as HTML. Best-effort markdown parsing on HTML
+ * input dumps the entire blob into header.name and yields zero sections, so
+ * we refuse rather than persist garbage. Callers should treat this as
+ * "JSON not available" and leave the legacy markdown/HTML column as the source
+ * of truth until the next re-tailor populates structured JSON cleanly.
+ */
+export function looksLikeHtml(input: string): boolean {
+	const trimmed = input.trimStart();
+	return /^<(?:p|h[1-6]|ul|ol|div|span|strong|em|br)\b/i.test(trimmed);
+}
+
 export function markdownToJson(markdown: string): TailoredCv {
+	if (looksLikeHtml(markdown)) {
+		throw new Error("Input is HTML, not markdown — refusing to parse");
+	}
 	const sections = splitIntoSections(markdown);
 	const cv: TailoredCv = TailoredCvSchema.parse({
 		header: parseHeader(sections.preamble),
