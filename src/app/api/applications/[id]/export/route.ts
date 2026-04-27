@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { TailoredCvSchema } from "@/lib/cv-schema";
 import { jsonToMarkdown, looksLikeHtml, markdownToJson } from "@/lib/cv-serializer";
 import { generateCvDocx, generateDocx, markdownToPlainText } from "@/lib/export";
+import { htmlToMarkdown } from "@/lib/html-to-markdown";
 import { prisma } from "@/lib/prisma";
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -27,16 +28,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 	const rawContent = isCoverLetter
 		? application.coverLetter
 		: (application.tailoredCVEdited ?? application.tailoredCV);
-	// Cover letters are saved as Tiptap HTML (no JSON fallback exists), so
-	// HTML must pass through. CVs additionally have a structured-JSON path
-	// — for them, treat HTML / whitespace-only markdown as "no markdown" so
-	// the route never falls back to a renderer that would emit raw tags.
-	const hasContent = Boolean(rawContent?.trim());
-	const usableCvMarkdown = !isCoverLetter && isUsableMarkdown(rawContent) ? rawContent : null;
-	const cv = isCoverLetter ? null : resolveTailoredCv(application.tailoredCvJson, usableCvMarkdown);
+	// Tiptap saves edits as HTML (via `editor.getHTML()`); normalize to markdown
+	// up-front so neither downstream renderer ever sees raw tags. Empty input
+	// resolves to null and the route returns 400 below.
+	const markdown = normalizeContent(rawContent);
+	const cv = isCoverLetter ? null : resolveTailoredCv(application.tailoredCvJson, markdown);
 
-	const canExport = isCoverLetter ? hasContent : Boolean(usableCvMarkdown || cv);
-	if (!canExport) {
+	if (!markdown && !cv) {
 		return NextResponse.json(
 			{ error: `No ${isCoverLetter ? "cover letter" : "tailored CV"} to export` },
 			{ status: 400 },
@@ -50,13 +48,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 	if (format === "docx") {
 		let buffer: Buffer;
 		if (isCoverLetter) {
-			// Guarded above — rawContent is non-empty here.
-			buffer = await generateDocx(rawContent as string, `Cover Letter - ${application.title}`);
+			// Guarded above — markdown is non-null here.
+			buffer = await generateDocx(markdown as string, `Cover Letter - ${application.title}`);
 		} else if (cv) {
 			buffer = await generateCvDocx(cv, `${application.title} - Tailored CV`);
 		} else {
-			// Last resort: validated non-HTML markdown CV with no parseable JSON.
-			buffer = await generateDocx(usableCvMarkdown as string, `${application.title} - Tailored CV`);
+			// CV with no parseable JSON — render the normalized markdown.
+			buffer = await generateDocx(markdown as string, `${application.title} - Tailored CV`);
 		}
 
 		return new NextResponse(new Uint8Array(buffer), {
@@ -67,13 +65,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 		});
 	}
 
-	// Plain text fallback (for PDF, client will handle rendering). When the CV
-	// row has only structured JSON (no edited markdown), serialize the JSON
-	// first so the response isn't an empty file. Cover letters fall through
-	// the same plain-text path on whatever content they have.
-	const sourceMarkdown = isCoverLetter
-		? (rawContent ?? "")
-		: (usableCvMarkdown ?? (cv ? jsonToMarkdown(cv) : ""));
+	// Plain text fallback (for PDF, client renders). When the CV row has only
+	// structured JSON (no markdown), serialize the JSON first so the response
+	// isn't an empty file.
+	const sourceMarkdown = markdown ?? (cv ? jsonToMarkdown(cv) : "");
 	const plainText = markdownToPlainText(sourceMarkdown);
 	return new NextResponse(plainText, {
 		headers: {
@@ -83,15 +78,20 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 	});
 }
 
-function isUsableMarkdown(value: string | null | undefined): value is string {
-	if (!value) return false;
+// Trim, drop empty content, and convert Tiptap HTML to markdown.
+function normalizeContent(value: string | null | undefined): string | null {
+	if (!value) return null;
 	const trimmed = value.trim();
-	if (!trimmed) return false;
-	return !looksLikeHtml(trimmed);
+	if (!trimmed) return null;
+	if (looksLikeHtml(trimmed)) {
+		const converted = htmlToMarkdown(trimmed).trim();
+		return converted ? converted : null;
+	}
+	return trimmed;
 }
 
-// Prefer the structured JSON when present; fall back to parsing the edited
-// markdown so legacy applications (pre-#7) still get the styled DOCX.
+// Prefer the structured JSON when present; fall back to parsing the
+// (now-markdown) edited content so legacy applications still get the styled DOCX.
 function resolveTailoredCv(json: unknown, markdown: string | null) {
 	if (json) {
 		const parsed = TailoredCvSchema.safeParse(json);
