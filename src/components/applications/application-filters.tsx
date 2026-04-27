@@ -3,7 +3,13 @@
 import { Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
 
 const STATUSES = [
 	{ value: "ALL", label: "All statuses" },
@@ -28,6 +34,7 @@ interface ApplicationFiltersProps {
 	status: string;
 	search: string;
 	sort: string;
+	hideStatus?: boolean;
 	onStatusChange: (status: string) => void;
 	onSearchChange: (search: string) => void;
 	onSortChange: (sort: string) => void;
@@ -37,6 +44,7 @@ export function ApplicationFilters({
 	status,
 	search,
 	sort,
+	hideStatus,
 	onStatusChange,
 	onSearchChange,
 	onSortChange,
@@ -63,18 +71,20 @@ export function ApplicationFilters({
 				)}
 			</div>
 			<div className="flex gap-2">
-				<Select value={status} onValueChange={(v) => v && onStatusChange(v)}>
-					<SelectTrigger className="w-[140px]">
-						<SelectValue />
-					</SelectTrigger>
-					<SelectContent>
-						{STATUSES.map((s) => (
-							<SelectItem key={s.value} value={s.value}>
-								{s.label}
-							</SelectItem>
-						))}
-					</SelectContent>
-				</Select>
+				{!hideStatus && (
+					<Select value={status} onValueChange={(v) => v && onStatusChange(v)}>
+						<SelectTrigger className="w-[140px]">
+							<SelectValue />
+						</SelectTrigger>
+						<SelectContent>
+							{STATUSES.map((s) => (
+								<SelectItem key={s.value} value={s.value}>
+									{s.label}
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
+				)}
 				<Select value={sort} onValueChange={(v) => v && onSortChange(v)}>
 					<SelectTrigger className="w-[150px]">
 						<SelectValue />
