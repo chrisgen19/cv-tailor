@@ -52,7 +52,7 @@ export function jsonToMarkdown(cv: TailoredCv): string {
 	}
 
 	if (cv.education.length > 0) {
-		lines.push(`## ${SECTION_HEADINGS.education}`, "");
+		lines.push("", `## ${SECTION_HEADINGS.education}`, "");
 		for (const edu of cv.education) {
 			const dates = formatDateRange(edu.start, edu.end);
 			const right = dates ? ` *(${dates})*` : "";
@@ -64,7 +64,7 @@ export function jsonToMarkdown(cv: TailoredCv): string {
 	}
 
 	if (cv.projects.length > 0) {
-		lines.push(`## ${SECTION_HEADINGS.projects}`, "");
+		lines.push("", `## ${SECTION_HEADINGS.projects}`, "");
 		for (const project of cv.projects) {
 			const linkPart = project.url ? ` ([link](${project.url}))` : "";
 			lines.push(`### ${project.name}${linkPart}`);
@@ -75,7 +75,7 @@ export function jsonToMarkdown(cv: TailoredCv): string {
 	}
 
 	if (cv.certifications.length > 0) {
-		lines.push(`## ${SECTION_HEADINGS.certifications}`, "");
+		lines.push("", `## ${SECTION_HEADINGS.certifications}`, "");
 		for (const cert of cv.certifications) {
 			const meta = [cert.issuer, cert.date].filter(Boolean).join(" • ");
 			lines.push(`- **${cert.name}**${meta ? ` — ${meta}` : ""}`);
@@ -108,7 +108,9 @@ interface RawSection {
  */
 export function looksLikeHtml(input: string): boolean {
 	const trimmed = input.trimStart();
-	return /^<(?:p|h[1-6]|ul|ol|div|span|strong|em|br)\b/i.test(trimmed);
+	// Match: opening/closing tags, HTML comments, doctype, XML processing instructions.
+	// Tag name pattern allows hyphens (custom elements) and namespace colons.
+	return /^<\s*(?:!--|!doctype\b|\?xml\b|\/?[a-z][\w:-]*)/i.test(trimmed);
 }
 
 export function markdownToJson(markdown: string): TailoredCv {
@@ -270,13 +272,15 @@ function parseExperience(section: RawSection | undefined): TailoredCv["experienc
 function parseEducation(section: RawSection | undefined): TailoredCv["education"] {
 	if (!section) return [];
 	return parseEntries(section.lines).map((entry) => {
+		const trailingDate = entry.heading.match(/\*\(([^)]+)\)\*\s*$/)?.[1];
 		const { primary, secondary } = splitOnDash(entry.heading);
-		const { start, end } = parseMetaLine(entry.metaLine);
+		const fromMeta = parseMetaLine(entry.metaLine);
+		const fromHeading = trailingDate ? parseMetaLine(trailingDate) : {};
 		return {
 			school: primary,
 			degree: secondary,
-			start,
-			end,
+			start: fromMeta.start ?? fromHeading.start,
+			end: fromMeta.end ?? fromHeading.end,
 			details: entry.bullets.join(" ") || undefined,
 		};
 	});

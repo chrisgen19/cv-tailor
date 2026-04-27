@@ -104,6 +104,8 @@ describe("cv-serializer", () => {
 
 		expect(parsed.education[0].school).toBe("State University");
 		expect(parsed.education[0].degree).toBe("B.S. Computer Science");
+		expect(parsed.education[0].start).toBe("2013");
+		expect(parsed.education[0].end).toBe("2017");
 
 		expect(parsed.projects[0].name).toBe("OpenLogger");
 		expect(parsed.projects[0].url).toBe("https://github.com/jane/openlogger");
@@ -118,6 +120,22 @@ describe("cv-serializer", () => {
 			"<p>Here is your CV.</p><h1>Jane Doe</h1><p>jane@example.com</p>";
 		expect(looksLikeHtml(html)).toBe(true);
 		expect(() => markdownToJson(html)).toThrow(/HTML/);
+	});
+
+	it("detects a broad set of HTML inputs (not just p/div/h1)", () => {
+		expect(looksLikeHtml("<table><tr><td>x</td></tr></table>")).toBe(true);
+		expect(looksLikeHtml("<article>Body</article>")).toBe(true);
+		expect(looksLikeHtml("<section>x</section>")).toBe(true);
+		expect(looksLikeHtml("<!DOCTYPE html><html><body>x</body></html>")).toBe(true);
+		expect(looksLikeHtml("<!-- comment --><p>after</p>")).toBe(true);
+		expect(looksLikeHtml('<?xml version="1.0"?><root/>')).toBe(true);
+		expect(looksLikeHtml("<custom-element>x</custom-element>")).toBe(true);
+		expect(looksLikeHtml("</closing>")).toBe(true);
+
+		// Negative cases — these are real markdown leading characters.
+		expect(looksLikeHtml("# Heading\n\nBody")).toBe(false);
+		expect(looksLikeHtml("- bullet")).toBe(false);
+		expect(looksLikeHtml("Just plain text")).toBe(false);
 	});
 
 	it("handles markdown with missing optional sections", () => {
