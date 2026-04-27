@@ -38,11 +38,11 @@ const WORK_SETUP_SHORT: Record<NonNullable<JobApplication["workSetup"]>, string>
 
 function compactSalary(min: number | null, max: number | null, currency: string | null) {
 	if (min == null && max == null) return null;
-	const cur = currency ?? "PHP";
+	const prefix = currency?.trim() ? `${currency.trim()} ` : "";
 	const fmt = (n: number) => (n >= 1000 ? `${Math.round(n / 1000)}k` : String(n));
-	if (min != null && max != null) return `${cur} ${fmt(min)}–${fmt(max)}/mo`;
-	if (min != null) return `${cur} ${fmt(min)}+/mo`;
-	return `≤ ${cur} ${fmt(max!)}/mo`;
+	if (min != null && max != null) return `${prefix}${fmt(min)}–${fmt(max)}/mo`;
+	if (min != null) return `${prefix}${fmt(min)}+/mo`;
+	return `≤ ${prefix}${fmt(max!)}/mo`;
 }
 
 export function ApplicationCard({

@@ -13,10 +13,10 @@ const WORK_SETUP_LABELS: Record<NonNullable<JobApplication["workSetup"]>, string
 function formatSalary(min: number | null, max: number | null, currency: string | null) {
 	if (min == null && max == null) return null;
 	const fmt = (n: number) => n.toLocaleString();
-	const cur = currency ?? "PHP";
-	if (min != null && max != null) return `${cur} ${fmt(min)} – ${fmt(max)} / month`;
-	if (min != null) return `${cur} ${fmt(min)}+ / month`;
-	return `Up to ${cur} ${fmt(max!)} / month`;
+	const prefix = currency?.trim() ? `${currency.trim()} ` : "";
+	if (min != null && max != null) return `${prefix}${fmt(min)} – ${fmt(max)} / month`;
+	if (min != null) return `${prefix}${fmt(min)}+ / month`;
+	return `Up to ${prefix}${fmt(max!)} / month`;
 }
 
 function ensureProtocol(url: string) {

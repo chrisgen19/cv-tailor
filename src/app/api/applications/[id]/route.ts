@@ -33,6 +33,29 @@ export function resolveEditedTailoredCvJson(
 	}
 }
 
+/**
+ * Optional text fields where an empty string from a cleared form input should
+ * become a real DB NULL instead of being persisted as "". Keeps queries and
+ * downstream display logic free of "" sentinels.
+ */
+const NULLABLE_TEXT_FIELDS = [
+	"salaryCurrency",
+	"locationAddress",
+	"companyWebsite",
+	"contactName",
+	"contactEmail",
+	"contactPhone",
+] as const;
+
+export function normalizeEmptyStringsToNull<
+	T extends Partial<Record<(typeof NULLABLE_TEXT_FIELDS)[number], unknown>>,
+>(data: T): T {
+	for (const key of NULLABLE_TEXT_FIELDS) {
+		if (data[key] === "") data[key] = null as T[(typeof NULLABLE_TEXT_FIELDS)[number]];
+	}
+	return data;
+}
+
 async function backfillTailoredCvJson(id: string, markdown: string) {
 	try {
 		const parsed = markdownToJson(markdown);
@@ -90,17 +113,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 		);
 	}
 
-	const data: Prisma.JobApplicationUpdateInput = { ...parsed.data };
-	for (const key of [
-		"salaryCurrency",
-		"locationAddress",
-		"companyWebsite",
-		"contactName",
-		"contactEmail",
-		"contactPhone",
-	] as const) {
-		if (data[key] === "") data[key] = null;
-	}
+	const data: Prisma.JobApplicationUpdateInput = normalizeEmptyStringsToNull({
+		...parsed.data,
+	});
 	const decision = resolveEditedTailoredCvJson(parsed.data.tailoredCVEdited);
 	if (decision.kind === "set") data.tailoredCvJson = decision.value;
 	else if (decision.kind === "clear") data.tailoredCvJson = Prisma.JsonNull;

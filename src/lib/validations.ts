@@ -24,9 +24,20 @@ const workSetupEnum = z.enum(["REMOTE", "HYBRID", "ONSITE"]);
 const optionalUrl = z.string().url().optional().or(z.literal(""));
 const optionalEmail = z.string().email().optional().or(z.literal(""));
 
+// Postgres INTEGER is 4 bytes signed (max 2,147,483,647). Stay below to avoid
+// 500s from values that pass zod but blow up on Prisma write.
+const PG_INT_MAX = 2_147_483_647;
+const salaryAmount = z
+	.number()
+	.int()
+	.nonnegative()
+	.max(PG_INT_MAX, "Salary value is too large")
+	.optional()
+	.nullable();
+
 const compensationFields = {
-	salaryMin: z.number().int().nonnegative().optional().nullable(),
-	salaryMax: z.number().int().nonnegative().optional().nullable(),
+	salaryMin: salaryAmount,
+	salaryMax: salaryAmount,
 	salaryCurrency: z.string().trim().min(2).max(8).optional().or(z.literal("")),
 	workSetup: workSetupEnum.optional().nullable(),
 	locationAddress: z.string().trim().max(500).optional(),

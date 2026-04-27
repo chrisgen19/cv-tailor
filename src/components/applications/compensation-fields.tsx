@@ -113,17 +113,20 @@ export function CompensationFields({ value, onChange }: Props) {
 			</CardHeader>
 			<CardContent className="space-y-4">
 				<div className="space-y-2">
-					<Label>Monthly salary range</Label>
+					<Label htmlFor="salary-min">Monthly salary range</Label>
 					<div className="grid gap-2 sm:grid-cols-[1fr_1fr_120px]">
 						<Input
+							id="salary-min"
 							type="number"
 							inputMode="numeric"
 							min="0"
 							placeholder="Min"
 							value={value.salaryMin}
 							onChange={(e) => update("salaryMin", e.target.value)}
+							aria-describedby="salary-hint"
 						/>
 						<Input
+							id="salary-max"
 							type="number"
 							inputMode="numeric"
 							min="0"
@@ -131,12 +134,13 @@ export function CompensationFields({ value, onChange }: Props) {
 							value={value.salaryMax}
 							onChange={(e) => update("salaryMax", e.target.value)}
 							aria-invalid={rangeInvalid}
+							aria-describedby="salary-hint"
 						/>
 						<Select
 							value={value.salaryCurrency}
 							onValueChange={(v) => v && update("salaryCurrency", v)}
 						>
-							<SelectTrigger>
+							<SelectTrigger aria-label="Currency">
 								<SelectValue />
 							</SelectTrigger>
 							<SelectContent>
@@ -149,11 +153,13 @@ export function CompensationFields({ value, onChange }: Props) {
 						</Select>
 					</div>
 					{rangeInvalid ? (
-						<p className="text-xs text-destructive">
+						<p id="salary-hint" className="text-xs text-destructive">
 							Max salary must be greater than or equal to min salary.
 						</p>
 					) : (
-						<p className="text-xs text-muted-foreground">Per month. Leave blank if undisclosed.</p>
+						<p id="salary-hint" className="text-xs text-muted-foreground">
+							Per month. Leave blank if undisclosed.
+						</p>
 					)}
 				</div>
 
@@ -199,28 +205,34 @@ export function CompensationFields({ value, onChange }: Props) {
 					/>
 				</div>
 
-				<div className="space-y-2">
-					<Label>Contact person</Label>
+				<fieldset className="space-y-2">
+					<legend className="text-sm font-medium">Contact person</legend>
 					<div className="grid gap-2 sm:grid-cols-3">
 						<Input
+							id="contact-name"
+							aria-label="Contact name"
 							placeholder="Name"
 							value={value.contactName}
 							onChange={(e) => update("contactName", e.target.value)}
 						/>
 						<Input
+							id="contact-email"
+							aria-label="Contact email"
 							type="email"
 							placeholder="Email"
 							value={value.contactEmail}
 							onChange={(e) => update("contactEmail", e.target.value)}
 						/>
 						<Input
+							id="contact-phone"
+							aria-label="Contact phone"
 							type="tel"
 							placeholder="Phone"
 							value={value.contactPhone}
 							onChange={(e) => update("contactPhone", e.target.value)}
 						/>
 					</div>
-				</div>
+				</fieldset>
 			</CardContent>
 		</Card>
 	);
