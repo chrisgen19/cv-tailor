@@ -118,8 +118,21 @@ export function markdownToJson(markdown: string): TailoredCv {
 		throw new Error("Input is HTML, not markdown — refusing to parse");
 	}
 	const sections = splitIntoSections(markdown);
+	const header = parseHeader(sections.preamble);
+	// Guard against degenerate parses: when the source has no line-anchored `##`
+	// headings (e.g. Tiptap stored markdown as literal text inside <p> tags), the
+	// entire blob lands in header.name and every section comes back empty. Render
+	// would produce one giant bold "name" — refuse so the export route can return
+	// a clear error instead of silently emitting a mangled PDF/DOCX.
+	const sectionKeys = Object.keys(sections.byKey);
+	const looksDegenerate =
+		sectionKeys.length === 0 &&
+		(header.name.length > 200 || /(^|\s)#{2,3}\s/.test(header.name));
+	if (looksDegenerate) {
+		throw new Error("Markdown has no recognizable sections — refusing to parse");
+	}
 	const cv: TailoredCv = TailoredCvSchema.parse({
-		header: parseHeader(sections.preamble),
+		header,
 		summary: extractSummary(sections.byKey.summary),
 		skills: parseSkills(sections.byKey.skills),
 		experience: parseExperience(sections.byKey.experience),

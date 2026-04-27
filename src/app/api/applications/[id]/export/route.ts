@@ -54,7 +54,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 		}
 		if (!cv) {
 			return NextResponse.json(
-				{ error: "Tailored CV JSON not available; cannot render PDF" },
+				{
+					error:
+						"Structured tailored CV not available — please re-run Tailor on this application to regenerate the data, then export again.",
+				},
 				{ status: 400 },
 			);
 		}
