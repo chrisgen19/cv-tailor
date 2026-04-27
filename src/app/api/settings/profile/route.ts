@@ -1,6 +1,12 @@
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import {
+	APPLICATIONS_VIEW_COOKIE,
+	APPLICATIONS_VIEWS,
+	type ApplicationsView,
+	normalizeApplicationsView,
+} from "@/lib/applications-view";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
@@ -10,20 +16,43 @@ import {
 	THEME_ACCENT_VALUES,
 	THEME_MODE_COOKIE,
 	THEME_MODES,
+	type ThemeAccent,
+	type ThemeMode,
 } from "@/lib/theme";
 
-const updateProfileSchema = z.object({
-	name: z.string().trim().min(1, "Name is required").optional(),
-	themeMode: z.enum(THEME_MODES).optional(),
-	themeAccent: z.enum(THEME_ACCENT_VALUES).optional(),
-})
+const updateProfileSchema = z
+	.object({
+		name: z.string().trim().min(1, "Name is required").optional(),
+		themeMode: z.enum(THEME_MODES).optional(),
+		themeAccent: z.enum(THEME_ACCENT_VALUES).optional(),
+		applicationsView: z.enum(APPLICATIONS_VIEWS).optional(),
+	})
 	.refine(
 		(data) =>
 			typeof data.name !== "undefined" ||
 			typeof data.themeMode !== "undefined" ||
-			typeof data.themeAccent !== "undefined",
+			typeof data.themeAccent !== "undefined" ||
+			typeof data.applicationsView !== "undefined",
 		{ message: "At least one profile field is required" },
 	);
+
+const ONE_YEAR = 60 * 60 * 24 * 365;
+
+function setPrefCookies(
+	response: NextResponse,
+	prefs: { themeMode: ThemeMode; themeAccent: ThemeAccent; applicationsView: ApplicationsView },
+) {
+	const opts = {
+		httpOnly: false,
+		sameSite: "lax" as const,
+		secure: process.env.NODE_ENV === "production",
+		path: "/",
+		maxAge: ONE_YEAR,
+	};
+	response.cookies.set(THEME_MODE_COOKIE, prefs.themeMode, opts);
+	response.cookies.set(THEME_ACCENT_COOKIE, prefs.themeAccent, opts);
+	response.cookies.set(APPLICATIONS_VIEW_COOKIE, prefs.applicationsView, opts);
+}
 
 export async function GET() {
 	const session = await auth.api.getSession({ headers: await headers() });
@@ -38,6 +67,7 @@ export async function GET() {
 			email: true,
 			themeMode: true,
 			themeAccent: true,
+			applicationsView: true,
 		},
 	});
 
@@ -45,26 +75,17 @@ export async function GET() {
 		return NextResponse.json({ error: "User not found" }, { status: 404 });
 	}
 
+	const prefs = {
+		themeMode: normalizeThemeMode(user.themeMode),
+		themeAccent: normalizeThemeAccent(user.themeAccent),
+		applicationsView: normalizeApplicationsView(user.applicationsView),
+	};
 	const response = NextResponse.json({
 		name: user.name,
 		email: user.email,
-		themeMode: normalizeThemeMode(user.themeMode),
-		themeAccent: normalizeThemeAccent(user.themeAccent),
+		...prefs,
 	});
-	response.cookies.set(THEME_MODE_COOKIE, normalizeThemeMode(user.themeMode), {
-		httpOnly: false,
-		sameSite: "lax",
-		secure: process.env.NODE_ENV === "production",
-		path: "/",
-		maxAge: 60 * 60 * 24 * 365,
-	});
-	response.cookies.set(THEME_ACCENT_COOKIE, normalizeThemeAccent(user.themeAccent), {
-		httpOnly: false,
-		sameSite: "lax",
-		secure: process.env.NODE_ENV === "production",
-		path: "/",
-		maxAge: 60 * 60 * 24 * 365,
-	});
+	setPrefCookies(response, prefs);
 	return response;
 }
 
@@ -87,6 +108,7 @@ export async function PATCH(request: Request) {
 		name?: string;
 		themeMode?: (typeof THEME_MODES)[number];
 		themeAccent?: (typeof THEME_ACCENT_VALUES)[number];
+		applicationsView?: (typeof APPLICATIONS_VIEWS)[number];
 	} = {};
 
 	if (typeof parsed.data.name !== "undefined") {
@@ -98,6 +120,9 @@ export async function PATCH(request: Request) {
 	if (typeof parsed.data.themeAccent !== "undefined") {
 		data.themeAccent = parsed.data.themeAccent;
 	}
+	if (typeof parsed.data.applicationsView !== "undefined") {
+		data.applicationsView = parsed.data.applicationsView;
+	}
 
 	const updatedUser = await prisma.user.update({
 		where: { id: session.user.id },
@@ -107,31 +132,23 @@ export async function PATCH(request: Request) {
 			email: true,
 			themeMode: true,
 			themeAccent: true,
+			applicationsView: true,
 		},
 	});
 
+	const prefs = {
+		themeMode: normalizeThemeMode(updatedUser.themeMode),
+		themeAccent: normalizeThemeAccent(updatedUser.themeAccent),
+		applicationsView: normalizeApplicationsView(updatedUser.applicationsView),
+	};
 	const response = NextResponse.json({
 		success: true,
 		profile: {
 			name: updatedUser.name,
 			email: updatedUser.email,
-			themeMode: normalizeThemeMode(updatedUser.themeMode),
-			themeAccent: normalizeThemeAccent(updatedUser.themeAccent),
+			...prefs,
 		},
 	});
-	response.cookies.set(THEME_MODE_COOKIE, normalizeThemeMode(updatedUser.themeMode), {
-		httpOnly: false,
-		sameSite: "lax",
-		secure: process.env.NODE_ENV === "production",
-		path: "/",
-		maxAge: 60 * 60 * 24 * 365,
-	});
-	response.cookies.set(THEME_ACCENT_COOKIE, normalizeThemeAccent(updatedUser.themeAccent), {
-		httpOnly: false,
-		sameSite: "lax",
-		secure: process.env.NODE_ENV === "production",
-		path: "/",
-		maxAge: 60 * 60 * 24 * 365,
-	});
+	setPrefCookies(response, prefs);
 	return response;
 }

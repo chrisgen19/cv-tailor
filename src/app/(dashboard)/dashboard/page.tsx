@@ -1,22 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { motion } from "framer-motion";
-import {
-	Briefcase,
-	FileText,
-	FileUp,
-	Loader2,
-	Plus,
-	Target,
-	Trophy,
-} from "lucide-react";
+import { Briefcase, FileText, FileUp, Loader2, Plus, Target, Trophy } from "lucide-react";
 import Link from "next/link";
-import type { ApplicationStatus } from "@/generated/prisma/enums";
+import { useEffect, useState } from "react";
 import { StatusBadge } from "@/components/applications/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import type { ApplicationStatus } from "@/generated/prisma/enums";
 
 interface DashboardData {
 	stats: {
@@ -84,12 +76,7 @@ export default function DashboardPage() {
 	if (!data) return null;
 
 	return (
-		<motion.div
-			className="space-y-6"
-			variants={containerVariants}
-			initial="hidden"
-			animate="show"
-		>
+		<motion.div className="space-y-6" variants={containerVariants} initial="hidden" animate="show">
 			<motion.div variants={itemVariants}>
 				<h1 className="text-2xl font-semibold">Dashboard</h1>
 				<p className="text-sm text-muted-foreground">Overview of your job applications</p>
@@ -101,9 +88,7 @@ export default function DashboardPage() {
 					<motion.div key={key} variants={itemVariants}>
 						<Card>
 							<CardHeader className="flex flex-row items-center justify-between pb-2">
-								<CardTitle className="text-sm font-medium text-muted-foreground">
-									{label}
-								</CardTitle>
+								<CardTitle className="text-sm font-medium text-muted-foreground">{label}</CardTitle>
 								<Icon className="h-4 w-4 text-muted-foreground" />
 							</CardHeader>
 							<CardContent>

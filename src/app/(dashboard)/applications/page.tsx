@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { Briefcase, Loader2, Plus } from "lucide-react";
+import { Briefcase, LayoutGrid, List, Loader2, Plus } from "lucide-react";
 import Link from "next/link";
-import type { JobApplication } from "@/generated/prisma/client";
+import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
 import { ApplicationCard } from "@/components/applications/application-card";
 import { ApplicationFilters } from "@/components/applications/application-filters";
+import { KanbanBoard } from "@/components/applications/kanban-board";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -24,15 +25,39 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
-import { toast } from "sonner";
+import type { JobApplication } from "@/generated/prisma/client";
+import {
+	APPLICATIONS_VIEW_COOKIE,
+	type ApplicationsView,
+	DEFAULT_APPLICATIONS_VIEW,
+	normalizeApplicationsView,
+} from "@/lib/applications-view";
+import { cn } from "@/lib/utils";
+import { APPLICATIONS_PAGE_SIZE, buildApplicationsQueryParams } from "./build-query-params";
 
-const PAGE_SIZE = 20;
+function readViewCookie(): ApplicationsView {
+	if (typeof document === "undefined") return DEFAULT_APPLICATIONS_VIEW;
+	const match = document.cookie
+		.split(";")
+		.map((c) => c.trim())
+		.find((c) => c.startsWith(`${APPLICATIONS_VIEW_COOKIE}=`));
+	return normalizeApplicationsView(match?.split("=")[1]);
+}
 
 export default function ApplicationsPage() {
 	const [applications, setApplications] = useState<JobApplication[]>([]);
 	const [total, setTotal] = useState(0);
 	const [page, setPage] = useState(1);
 	const [loading, setLoading] = useState(true);
+
+	// View — null until we've read the cookie on mount, so the first fetch
+	// uses the resolved preference (returning kanban users don't pay for an
+	// extra list request + flicker).
+	const [view, setView] = useState<ApplicationsView | null>(null);
+	const [savingView, setSavingView] = useState(false);
+	useEffect(() => {
+		setView(readViewCookie());
+	}, []);
 
 	// Filters
 	const [status, setStatus] = useState("ALL");
@@ -53,32 +78,42 @@ export default function ApplicationsPage() {
 
 	const [sortField, sortOrder] = sort.split(":");
 
-	const fetchApplications = useCallback(async () => {
-		setLoading(true);
-		try {
-			const params = new URLSearchParams({
-				page: String(page),
-				limit: String(PAGE_SIZE),
-				sort: sortField,
-				order: sortOrder,
-			});
-			if (status !== "ALL") params.set("status", status);
-			if (search) params.set("search", search);
+	const fetchApplications = useCallback(
+		async (signal?: AbortSignal) => {
+			if (view === null) return;
+			setLoading(true);
+			try {
+				const params = buildApplicationsQueryParams({
+					view,
+					page,
+					status,
+					search,
+					sortField,
+					sortOrder,
+				});
 
-			const res = await fetch(`/api/applications?${params}`);
-			if (!res.ok) throw new Error("Failed to fetch applications");
-			const data = await res.json();
-			setApplications(data.applications);
-			setTotal(data.total);
-		} catch {
-			toast.error("Failed to load applications");
-		} finally {
-			setLoading(false);
-		}
-	}, [page, status, search, sortField, sortOrder]);
+				const res = await fetch(`/api/applications?${params}`, { signal });
+				if (!res.ok) throw new Error("Failed to fetch applications");
+				const data = await res.json();
+				if (signal?.aborted) return;
+				setApplications(data.applications);
+				setTotal(data.total);
+			} catch (error) {
+				if ((error as { name?: string }).name === "AbortError") return;
+				toast.error("Failed to load applications");
+			} finally {
+				if (!signal?.aborted) setLoading(false);
+			}
+		},
+		[view, page, status, search, sortField, sortOrder],
+	);
 
 	useEffect(() => {
-		fetchApplications();
+		// Aborting on every change ensures stale responses (older search /
+		// view / page combos) can't overwrite the current state.
+		const controller = new AbortController();
+		fetchApplications(controller.signal);
+		return () => controller.abort();
 	}, [fetchApplications]);
 
 	// Debounce search
@@ -143,7 +178,28 @@ export default function ApplicationsPage() {
 		}
 	};
 
-	const totalPages = Math.ceil(total / PAGE_SIZE);
+	const totalPages = Math.ceil(total / APPLICATIONS_PAGE_SIZE);
+
+	const handleViewChange = async (next: ApplicationsView) => {
+		if (next === view || savingView) return;
+		const previous = view;
+		setView(next);
+		setPage(1);
+		setSavingView(true);
+		try {
+			const res = await fetch("/api/settings/profile", {
+				method: "PATCH",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ applicationsView: next }),
+			});
+			if (!res.ok) throw new Error();
+		} catch {
+			toast.error("Failed to save view preference");
+			setView(previous);
+		} finally {
+			setSavingView(false);
+		}
+	};
 
 	return (
 		<div className="space-y-4">
@@ -154,16 +210,53 @@ export default function ApplicationsPage() {
 						{total} application{total !== 1 ? "s" : ""}
 					</p>
 				</div>
-				<Button render={<Link href="/applications/new" />}>
-					<Plus className="mr-2 h-4 w-4" />
-					New Application
-				</Button>
+				<div className="flex items-center gap-2">
+					<fieldset
+						aria-label="View mode"
+						disabled={savingView}
+						className="inline-flex items-center rounded-md border border-border p-0.5 disabled:opacity-50"
+					>
+						<button
+							type="button"
+							aria-pressed={view === "list"}
+							aria-label="List view"
+							onClick={() => handleViewChange("list")}
+							className={cn(
+								"flex h-7 w-7 items-center justify-center rounded-sm transition-colors",
+								view === "list"
+									? "bg-primary/10 text-primary"
+									: "text-muted-foreground hover:text-foreground",
+							)}
+						>
+							<List className="h-4 w-4" />
+						</button>
+						<button
+							type="button"
+							aria-pressed={view === "kanban"}
+							aria-label="Kanban view"
+							onClick={() => handleViewChange("kanban")}
+							className={cn(
+								"flex h-7 w-7 items-center justify-center rounded-sm transition-colors",
+								view === "kanban"
+									? "bg-primary/10 text-primary"
+									: "text-muted-foreground hover:text-foreground",
+							)}
+						>
+							<LayoutGrid className="h-4 w-4" />
+						</button>
+					</fieldset>
+					<Button render={<Link href="/applications/new" />}>
+						<Plus className="mr-2 h-4 w-4" />
+						New Application
+					</Button>
+				</div>
 			</div>
 
 			<ApplicationFilters
 				status={status}
 				search={searchInput}
 				sort={sort}
+				hideStatus={view === "kanban"}
 				onStatusChange={(v) => {
 					setStatus(v);
 					setPage(1);
@@ -175,16 +268,10 @@ export default function ApplicationsPage() {
 				}}
 			/>
 
-			{selected.size > 0 && (
+			{view === "list" && selected.size > 0 && (
 				<div className="flex items-center gap-3 rounded-lg border border-primary/20 bg-primary/5 px-4 py-2">
-					<span className="text-sm font-medium">
-						{selected.size} selected
-					</span>
-					<Button
-						variant="outline"
-						size="sm"
-						onClick={() => setBulkStatusOpen(true)}
-					>
+					<span className="text-sm font-medium">{selected.size} selected</span>
+					<Button variant="outline" size="sm" onClick={() => setBulkStatusOpen(true)}>
 						Update Status
 					</Button>
 					<Button
@@ -216,6 +303,8 @@ export default function ApplicationsPage() {
 						</Button>
 					</CardContent>
 				</Card>
+			) : view === "kanban" ? (
+				<KanbanBoard applications={applications} onStatusChange={setApplications} />
 			) : (
 				<motion.div
 					className="space-y-3"
@@ -245,7 +334,7 @@ export default function ApplicationsPage() {
 				</motion.div>
 			)}
 
-			{totalPages > 1 && (
+			{view === "list" && totalPages > 1 && (
 				<div className="flex items-center justify-center gap-2 pt-4">
 					<Button
 						variant="outline"

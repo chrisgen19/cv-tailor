@@ -1,8 +1,8 @@
-import type { ApplicationStatus } from "@/generated/prisma/enums";
 import { Badge } from "@/components/ui/badge";
+import type { ApplicationStatus } from "@/generated/prisma/enums";
 import { cn } from "@/lib/utils";
 
-const STATUS_CONFIG: Record<ApplicationStatus, { label: string; className: string }> = {
+export const STATUS_CONFIG: Record<ApplicationStatus, { label: string; className: string }> = {
 	DRAFT: {
 		label: "Draft",
 		className: "bg-muted text-muted-foreground",
